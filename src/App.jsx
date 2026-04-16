@@ -37,7 +37,7 @@ import {
 
 /**
  * PROJETO OFFIN - VERSÃO DE PRODUÇÃO CORRIGIDA
- * Foco: Resiliência de Autenticação, Acessibilidade de Rolagem e UX de Input
+ * Foco: Resiliência de Autenticação, Acessibilidade de Rolagem e URLs Dinâmicas
  */
 
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
@@ -56,8 +56,17 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : "offinn-89849"; 
-const BASE_URL = "https://of-fin.vercel.app";
-const APP_URL = `${BASE_URL}/app.html`;
+
+// --- DETECÇÃO DINÂMICA DE URL ---
+// Usamos o endereço atual do navegador para evitar erros de 404 por domínios fixos
+const getCurrentAppUrl = () => {
+  const origin = window.location.origin;
+  const path = window.location.pathname;
+  // Se já estivermos no app.html, mantemos. Caso contrário, apontamos para ele.
+  return path.includes('app.html') ? origin + path : origin + '/app.html';
+};
+
+const APP_URL = getCurrentAppUrl();
 
 // --- FUNÇÃO AUXILIAR DE CLIPBOARD ---
 const copyToClipboardFallback = (text) => {
@@ -142,12 +151,10 @@ const OffinLogo = ({ scale = 1 }) => (
 // --- TELAS ---
 
 const CreateLinkScreen = ({ user, onNext, setToast }) => {
-  // Iniciamos com @ para facilitar
   const [handle, setHandle] = useState('@');
   const [loading, setLoading] = useState(false);
 
   const handleCreateProfile = async () => {
-    // Validamos se há algo além do @
     if (!handle.trim() || handle === '@' || !user) return;
     setLoading(true);
     try {
@@ -163,7 +170,6 @@ const CreateLinkScreen = ({ user, onNext, setToast }) => {
 
   const onHandleChange = (e) => {
     let val = e.target.value;
-    // Garante que sempre comece com @
     if (!val.startsWith('@')) {
       val = '@' + val.replace(/^@*/, '');
     }
@@ -306,7 +312,6 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
             setToast(`Domínio não autorizado. Adicione "${currentDomain}" no Console do Firebase.`);
             setLoading(false);
           } else {
-            console.error("Tentando login direto por falha no link:", linkErr);
             const result = await signInWithPopup(auth, provider);
             await sendToDB(result.user);
           }
@@ -415,7 +420,7 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
           messages.map(msg => (
             <div key={msg.id} onClick={() => onSelectMessage(msg)} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 cursor-pointer active:scale-95 transition-all">
               <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${msg.isRevealed ? 'bg-emerald-100 text-emerald-600' : 'bg-pink-100 text-pink-600'}`}>
-                {msg.isRevealed ? 'Revelado' : 'Trancado'}
+                {m.isRevealed ? 'Revelado' : 'Trancado'}
               </span>
               <p className="mt-4 italic text-slate-700 font-serif text-lg leading-relaxed">"{msg.text}"</p>
               {!msg.isRevealed && <p className="mt-4 text-xs text-cyan-500 font-black flex items-center gap-1 uppercase tracking-wider">Revelar identidade <ArrowRight size={14} /></p>}

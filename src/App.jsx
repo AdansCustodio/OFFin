@@ -15,8 +15,10 @@ import {
   setDoc, 
   getDoc, 
   updateDoc,
+  deleteDoc,
   collection,
-  onSnapshot
+  onSnapshot,
+  runTransaction
 } from 'firebase/firestore';
 import {
   ShieldCheck,
@@ -44,12 +46,14 @@ import {
   Ticket,
   Store,
   CalendarHeart,
-  CreditCard
+  CreditCard,
+  Trash2,
+  Bell
 } from 'lucide-react';
 
 /**
- * PROJETO OFFIN - VERSÃO DE PRODUÇÃO V13 (FALLBACK CANVAS)
- * Foco: Resolução do problema de download de imagem em WebViews (TikTok/Instagram nativo).
+ * PROJETO OFFIN - VERSÃO DE PRODUÇÃO V15 (SECURITY PATCH - TRANSACTIONS)
+ * Foco: Transações Atômicas para evitar duplicação de saldo e race conditions.
  */
 
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
@@ -100,7 +104,7 @@ const copyToClipboardFallback = (text) => {
   document.body.removeChild(textArea);
 };
 
-// --- GERADOR DE IMAGEM PARA STORIES (Agora retorna apenas a DataURL) ---
+// --- GERADOR DE IMAGEM PARA STORIES ---
 const generateStoryImage = (handle) => {
   const canvas = document.createElement('canvas');
   canvas.width = 1080;
@@ -137,11 +141,13 @@ const generateStoryImage = (handle) => {
   ctx.lineWidth = 5;
   ctx.stroke();
 
+  // TEXTO ATUALIZADO E AMIGÁVEL
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 65px sans-serif';
-  ctx.fillText('ME MANDE UM SEGREDO', 540, 930);
-  ctx.font = '400 50px sans-serif';
-  ctx.fillText('EU VOU REVELAR QUEM É! 👀', 540, 1030);
+  ctx.font = 'bold 50px sans-serif';
+  ctx.fillText('ME MANDE UM SEGREDO', 540, 890);
+  ctx.fillText('OU DIGA ALGO SOBRE MIM...', 540, 960);
+  ctx.font = '400 35px sans-serif';
+  ctx.fillText('E EU VOU TENTAR DESCOBRIR QUEM É! 👀', 540, 1050);
 
   ctx.fillStyle = '#06b6d4';
   ctx.font = '900 120px sans-serif';
@@ -218,39 +224,52 @@ const StoreModal = ({ isOpen, onClose, user, userProfile, setToast }) => {
   
   if (!isOpen) return null;
 
-  const todayStr = new Date().toISOString().split('T')[0]; // Data atual (YYYY-MM-DD)
+  const todayStr = new Date().toISOString().split('T')[0];
   const lastClaimedStr = userProfile?.lastDailyCoinDate;
-  const canClaimDaily = lastClaimedStr !== todayStr; // Se for diferente de hoje, pode resgatar
+  const canClaimDaily = lastClaimedStr !== todayStr;
 
   const handleClaimDaily = async () => {
     if (!canClaimDaily || !user) return;
     setLoadingDaily(true);
     try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid), {
-        tokens: (userProfile?.tokens || 0) + 1,
-        lastDailyCoinDate: todayStr
+      // 🔒 SEGURANÇA PASSO 1: Usando Transação para evitar duplo resgate clicando rápido
+      await runTransaction(db, async (transaction) => {
+        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid);
+        const userDoc = await transaction.get(userRef);
+        
+        if (!userDoc.exists()) throw "Usuário não encontrado";
+        
+        const currentData = userDoc.data();
+        if (currentData.lastDailyCoinDate === todayStr) {
+          throw "Já resgatado";
+        }
+
+        transaction.update(userRef, {
+          tokens: (currentData.tokens || 0) + 1,
+          lastDailyCoinDate: todayStr
+        });
       });
+
       setToast("1 Moeda resgatada com sucesso! Volte amanhã.", "success");
     } catch (err) {
-      setToast("Erro ao resgatar moeda diária.");
+      if (err === "Já resgatado") {
+         setToast("Você já resgatou o bônus de hoje.");
+      } else {
+         setToast("Erro ao resgatar moeda diária.");
+      }
     } finally {
       setLoadingDaily(false);
     }
   };
 
   const handleMockPurchase = (amount) => {
-    setToast(`Simulação: Você receberia ${amount} moedas! Integração PIX/Cartão em breve na v2.0.`, "success");
+    setToast(`Simulação: Você receberia ${amount} moedas! Integração PIX/Cartão no próximo passo.`, "success");
   };
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col justify-end">
-      {/* Backdrop (Fecha ao clicar fora) */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in" onClick={onClose}></div>
-      
-      {/* Painel da Loja */}
       <div className="relative bg-[#18181b] border-t border-white/10 rounded-t-[2.5rem] p-8 space-y-8 animate-in slide-in-from-bottom-full shadow-[0_-20px_50px_rgba(0,0,0,0.5)]">
-        
-        {/* Cabeçalho da Loja */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/30 text-yellow-500">
@@ -270,7 +289,6 @@ const StoreModal = ({ isOpen, onClose, user, userProfile, setToast }) => {
 
         <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
 
-        {/* 1. Válvula de Escape Gratuita (Bônus Diário) */}
         <div className="bg-gradient-to-br from-[#09090b] to-cyan-900/20 border border-cyan-500/20 p-6 rounded-3xl space-y-4">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
@@ -292,42 +310,29 @@ const StoreModal = ({ isOpen, onClose, user, userProfile, setToast }) => {
           {!canClaimDaily && <p className="text-[10px] text-center text-slate-500 font-bold uppercase tracking-widest">Volte amanhã para mais!</p>}
         </div>
 
-        {/* 2. Aquisição Rápida (Monetização Real) */}
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <CreditCard size={18} className="text-slate-400"/>
             <h4 className="text-slate-300 font-bold uppercase tracking-widest text-xs">Tem pressa? Compre Moedas</h4>
           </div>
-          
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
-            {/* Pacote 1 */}
             <button onClick={() => handleMockPurchase(1)} className="bg-[#09090b] border border-white/5 hover:border-yellow-500/50 py-4 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 group">
-              <div className="text-yellow-600 group-hover:scale-110 transition-transform">
-                <Coins size={24}/>
-              </div>
+              <div className="text-yellow-600 group-hover:scale-110 transition-transform"><Coins size={24}/></div>
               <div className="text-center mt-2">
                 <span className="block font-black text-white italic tracking-tighter text-sm sm:text-base">1 Moeda</span>
                 <span className="text-[10px] text-slate-400 font-bold">R$ 0,99</span>
               </div>
             </button>
-
-            {/* Pacote 5 */}
             <button onClick={() => handleMockPurchase(5)} className="bg-[#09090b] border border-white/5 hover:border-yellow-500/50 py-4 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 group">
-              <div className="text-yellow-500 group-hover:scale-110 transition-transform flex">
-                <Coins size={24}/><Coins size={24} className="-ml-3 opacity-80"/>
-              </div>
+              <div className="text-yellow-500 group-hover:scale-110 transition-transform flex"><Coins size={24}/><Coins size={24} className="-ml-3 opacity-80"/></div>
               <div className="text-center mt-2">
                 <span className="block font-black text-white italic tracking-tighter text-sm sm:text-base">5 Moedas</span>
                 <span className="text-[10px] text-slate-400 font-bold">R$ 3,99</span>
               </div>
             </button>
-
-            {/* Pacote 10 (Popular/Vantajoso) */}
             <button onClick={() => handleMockPurchase(10)} className="bg-gradient-to-b from-yellow-500/20 to-[#09090b] border border-yellow-500/50 hover:border-yellow-400 py-4 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 relative overflow-hidden group shadow-[0_0_15px_rgba(234,179,8,0.15)]">
               <div className="absolute top-0 inset-x-0 bg-yellow-500 text-yellow-950 text-[8px] font-black uppercase py-0.5 text-center">Melhor Valor</div>
-              <div className="text-yellow-400 group-hover:scale-110 transition-transform flex mt-2">
-                <Coins size={26}/><Coins size={26} className="-ml-3"/>
-              </div>
+              <div className="text-yellow-400 group-hover:scale-110 transition-transform flex mt-2"><Coins size={26}/><Coins size={26} className="-ml-3"/></div>
               <div className="text-center mt-1">
                 <span className="block font-black text-yellow-400 italic tracking-tighter text-base sm:text-lg drop-shadow-[0_0_10px_rgba(234,179,8,0.5)]">10 Moedas</span>
                 <span className="text-[11px] text-yellow-500 font-black">R$ 5,99</span>
@@ -335,7 +340,6 @@ const StoreModal = ({ isOpen, onClose, user, userProfile, setToast }) => {
             </button>
           </div>
         </div>
-
       </div>
     </div>
   );
@@ -344,7 +348,7 @@ const StoreModal = ({ isOpen, onClose, user, userProfile, setToast }) => {
 
 // --- TELAS DO APP ---
 
-const CreateLinkScreen = ({ user, referrerUid, onNext, setToast }) => {
+const CreateLinkScreen = ({ user, referrerUid, onNext, setToast, unreadCount }) => {
   const [handle, setHandle] = useState('@');
   const [loading, setLoading] = useState(false);
 
@@ -366,13 +370,16 @@ const CreateLinkScreen = ({ user, referrerUid, onNext, setToast }) => {
         });
 
         if (referrerUid && referrerUid !== user.uid) {
-          const refRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', referrerUid);
-          const refSnap = await getDoc(refRef);
-          if (refSnap.exists()) {
-            await updateDoc(refRef, {
-              tokens: (refSnap.data().tokens || 0) + 1
+          // Utiliza transação para bônus de referral
+          try {
+            await runTransaction(db, async (transaction) => {
+              const refRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', referrerUid);
+              const refSnap = await transaction.get(refRef);
+              if (refSnap.exists()) {
+                transaction.update(refRef, { tokens: (refSnap.data().tokens || 0) + 1 });
+              }
             });
-          }
+          } catch(err) { console.error("Erro ao creditar referral", err); }
         }
       } else {
         await updateDoc(userRef, { handle: cleanHandle, isPermanent: !user.isAnonymous });
@@ -407,7 +414,15 @@ const CreateLinkScreen = ({ user, referrerUid, onNext, setToast }) => {
               className="w-full bg-[#09090b] border border-white/10 rounded-xl py-4 px-6 text-white font-bold focus:outline-none focus:border-cyan-500/50 focus:bg-[#18181b] transition-all text-center placeholder:text-slate-600 shadow-inner" 
             />
             <Button onClick={handleCreateProfile} loading={loading} disabled={!handle || handle === '@' || !user}>Gerar Meu Link</Button>
-            <Button onClick={() => onNext(4)} variant="ghost">Já tenho link / Ver Meu Radar</Button>
+            
+            <Button onClick={() => onNext(4)} variant="ghost" className="relative mt-2">
+              Já tenho link / Ver Meu Radar
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[10px] font-black w-6 h-6 flex items-center justify-center rounded-full animate-bounce shadow-[0_0_15px_rgba(236,72,153,0.6)] border-2 border-[#18181b]">
+                  {unreadCount}
+                </span>
+              )}
+            </Button>
           </div>
         </main>
       </div>
@@ -437,13 +452,9 @@ const LinkReadyScreen = ({ user, onNext }) => {
   };
 
   const handleDownloadAttempt = () => {
-    // 1. Gera a imagem base64
     const dataUrl = generateStoryImage(handle);
-    
-    // 2. Sempre mostra o Fallback na tela (para garantir em WebViews do Insta/TikTok)
     setGeneratedImage(dataUrl);
 
-    // 3. Tenta forçar o download programático (funciona no Chrome/Safari padrão)
     try {
       const link = document.createElement('a');
       link.download = `offin-desafio-${handle || 'secreto'}.png`;
@@ -456,7 +467,6 @@ const LinkReadyScreen = ({ user, onNext }) => {
     }
   };
 
-  // Se o fallback de imagem estiver ativo, renderizamos ele por cima de tudo
   if (generatedImage) {
     return (
       <div className="flex flex-col min-h-screen p-8 animate-in slide-in-from-bottom-5 overflow-y-auto text-center items-center justify-center relative bg-[#09090b] z-50">
@@ -473,7 +483,6 @@ const LinkReadyScreen = ({ user, onNext }) => {
           </p>
         </div>
         
-        {/* pointerEvents e WebkitTouchCallout garantem que o Long-Press funcione no iOS e Android */}
         <img 
           src={generatedImage} 
           alt="Seu Story" 
@@ -488,7 +497,6 @@ const LinkReadyScreen = ({ user, onNext }) => {
     );
   }
 
-  // Renderização normal da tela LinkReadyScreen
   return (
     <div className="flex flex-col min-h-screen p-8 animate-in slide-in-from-right overflow-y-auto text-center justify-center items-center relative">
       <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none mix-blend-overlay"></div>
@@ -634,6 +642,7 @@ const InboxScreen = ({ user, userProfile, onSelectMessage, onBack, setToast, onO
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('received');
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null); // Controle de exclusão
 
   useEffect(() => {
     if (!user) return;
@@ -656,6 +665,17 @@ const InboxScreen = ({ user, userProfile, onSelectMessage, onBack, setToast, onO
       setToast("Acesso garantido!", "success");
     } catch (e) {
       setToast("Erro no login.");
+    }
+  };
+
+  const executeDelete = async (e, msgId) => {
+    e.stopPropagation();
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', msgId));
+      setToast("Mensagem apagada.", "success");
+      setConfirmDeleteId(null);
+    } catch(err) {
+      setToast("Erro ao apagar mensagem.");
     }
   };
 
@@ -707,18 +727,34 @@ const InboxScreen = ({ user, userProfile, onSelectMessage, onBack, setToast, onO
             </div>
           ) : (
             (activeTab === 'received' ? receivedMsgs : sentMsgs).map(msg => (
-              <div key={msg.id} onClick={() => activeTab === 'received' && onSelectMessage(msg)} className={`bg-[#09090b] p-6 rounded-2xl border border-white/5 transition-all ${activeTab === 'received' ? 'cursor-pointer active:scale-95 hover:border-cyan-500/30 hover:bg-white/5' : ''}`}>
+              <div key={msg.id} onClick={() => activeTab === 'received' && setConfirmDeleteId(null) && onSelectMessage(msg)} className={`bg-[#09090b] p-6 rounded-2xl border border-white/5 transition-all ${activeTab === 'received' ? 'cursor-pointer active:scale-95 hover:border-cyan-500/30 hover:bg-white/5' : ''}`}>
                 <div className="flex items-center justify-between mb-4">
                   <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-full flex items-center gap-1 ${msg.isRevealed ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-pink-500/10 text-pink-400 border border-pink-500/20'}`}>
                      {msg.isRevealed ? <CheckCircle2 size={10}/> : <Lock size={10}/>}
                      {msg.isRevealed ? 'Identidade Revelada' : 'Segredo Trancado'}
                   </span>
-                  {activeTab === 'sent' && (
-                    <div className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500 uppercase">
-                      {msg.status === 'sent' ? <Clock size={10} /> : <Eye size={10} />}
-                      {msg.status === 'sent' ? 'Entregue' : 'Visualizado'}
-                    </div>
-                  )}
+                  
+                  <div className="flex items-center gap-3">
+                    {activeTab === 'sent' && (
+                      <div className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500 uppercase">
+                        {msg.status === 'sent' ? <Clock size={10} /> : <Eye size={10} />}
+                        {msg.status === 'sent' ? 'Entregue' : 'Visualizado'}
+                      </div>
+                    )}
+                    
+                    {/* Botão de Exclusão com Confirmação Inline */}
+                    {confirmDeleteId === msg.id ? (
+                      <div className="flex items-center gap-2">
+                        <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }} className="text-[10px] text-slate-400 hover:text-white px-2 py-1 font-bold">Cancelar</button>
+                        <button onClick={(e) => executeDelete(e, msg.id)} className="bg-pink-600/20 text-pink-500 border border-pink-500/30 hover:bg-pink-600 hover:text-white px-2 py-1 rounded-md text-[10px] font-black uppercase transition-colors shadow-sm">Apagar</button>
+                      </div>
+                    ) : (
+                      <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(msg.id); }} className="text-slate-500 hover:text-pink-500 transition-colors p-1 rounded-md hover:bg-white/5">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+
                 </div>
                 <p className="italic text-slate-200 font-serif text-lg leading-relaxed">"{msg.text}"</p>
                 {activeTab === 'received' && !msg.isRevealed && <div className="mt-5 pt-4 border-t border-white/5 flex items-center gap-2 text-[10px] font-black text-cyan-500 uppercase tracking-widest">Usar Moeda para Revelar <ArrowRight size={12}/></div>}
@@ -759,18 +795,29 @@ const ViralPaywallScreen = ({ user, userProfile, message, onUnlock, setToast, on
     }
     setIsProcessing(true);
     try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid), {
-        tokens: tokens - 1
-      });
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', message.id), { 
-        isRevealed: true, status: 'revealed' 
+      // 🔒 SEGURANÇA PASSO 1: Transação Atômica para deduzir moeda e revelar
+      await runTransaction(db, async (transaction) => {
+        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid);
+        const msgRef = doc(db, 'artifacts', appId, 'public', 'data', 'messages', message.id);
+
+        const userDoc = await transaction.get(userRef);
+        if (!userDoc.exists()) throw "Usuário não encontrado";
+
+        const currentTokens = userDoc.data().tokens || 0;
+        if (currentTokens < 1) throw "Saldo insuficiente";
+
+        // Faz as duas operações de uma vez só!
+        transaction.update(userRef, { tokens: currentTokens - 1 });
+        transaction.update(msgRef, { isRevealed: true, status: 'revealed' });
       });
       
+      // Busca a identidade apenas se a transação acima foi um sucesso
       const idSnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'identities', message.id));
       const msgWithIdentity = idSnap.exists() ? { ...message, ...idSnap.data() } : message;
 
       setTimeout(() => onUnlock(msgWithIdentity), 800);
     } catch(e) {
+      console.error(e);
       setToast("Erro ao processar o pagamento. A identidade continua protegida.");
       setIsProcessing(false);
     }
@@ -876,6 +923,7 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [toastType, setToastType] = useState('error');
   const [isStoreOpen, setIsStoreOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0); // Controle de notificações
 
   const showToast = (msg, type = 'error') => {
     setToast(msg);
@@ -904,15 +952,28 @@ export default function App() {
     return onAuthStateChanged(auth, setUser);
   }, []);
 
-  // Monitora o perfil do usuário em tempo real
+  // Monitora o perfil do usuário e as mensagens (para o contador)
   useEffect(() => {
     if (!user) return;
-    const unsub = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid), (d) => {
+    
+    // Perfil
+    const unsubProfile = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid), (d) => {
       if(d.exists()) setUserProfile(d.data());
-    }, (error) => {
-      console.error("Erro no onSnapshot do perfil:", error);
-    });
-    return () => unsub();
+    }, (error) => console.error(error));
+
+    // Contador Global de Não Lidas
+    const msgRef = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
+    const unsubMessages = onSnapshot(msgRef, (snap) => {
+      const msgs = snap.docs.map(doc => doc.data());
+      // Filtra mensagens que são para este usuário e que ainda não foram visualizadas no paywall
+      const unread = msgs.filter(m => m.targetUid === user.uid && m.status === 'sent').length;
+      setUnreadCount(unread);
+    }, (error) => console.error(error));
+
+    return () => {
+      unsubProfile();
+      unsubMessages();
+    };
   }, [user]);
 
   useEffect(() => {
@@ -947,7 +1008,7 @@ export default function App() {
       </div>
 
       <div className="w-full max-w-md bg-[#18181b] min-h-screen shadow-2xl relative flex flex-col z-10 border-x border-white/5 overflow-hidden">
-        {screen === 1 && <CreateLinkScreen user={user} referrerUid={referrerUid} onNext={setScreen} setToast={showToast} />}
+        {screen === 1 && <CreateLinkScreen user={user} referrerUid={referrerUid} onNext={setScreen} setToast={showToast} unreadCount={unreadCount} />}
         {screen === 2 && <LinkReadyScreen user={user} onNext={setScreen} />}
         {screen === 3 && targetUid && <SendSecretScreen targetUid={targetUid} user={user} onReset={() => setScreen(1)} setToast={showToast} />}
         {screen === 4 && <InboxScreen user={user} userProfile={userProfile} onBack={() => setScreen(1)} onSelectMessage={msg => { setSelectedMessage(msg); setScreen(5); }} setToast={showToast} onOpenStore={() => setIsStoreOpen(true)} />}

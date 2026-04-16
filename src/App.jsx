@@ -48,12 +48,13 @@ import {
   CalendarHeart,
   CreditCard,
   Trash2,
-  Bell
+  Bell,
+  QrCode
 } from 'lucide-react';
 
 /**
- * PROJETO OFFIN - VERSÃO DE PRODUÇÃO V16 (OTIMIZAÇÃO DE LEITURA)
- * Foco: Remoção de listeners globais caros. Notificações otimizadas via unreadCount.
+ * PROJETO OFFIN - VERSÃO DE PRODUÇÃO V17 (MERCADO PAGO + UI CENTRADA)
+ * Foco: Pagamentos Reais via PIX e Listeners de Sucesso Automático.
  */
 
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
@@ -170,7 +171,7 @@ const Toast = ({ message, type = 'error', onClose }) => {
   return (
     <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 duration-300 w-[90%] max-w-xs">
       <div className={`px-6 py-4 rounded-xl shadow-2xl backdrop-blur-md flex flex-col gap-2 border ${
-        type === 'error' ? 'bg-red-500/90 border-red-400/50 text-white' : 'bg-cyan-500/90 border-cyan-400/50 text-white'
+        type === 'error' ? 'bg-red-500/90 border-red-400/50 text-white' : 'bg-emerald-500/90 border-emerald-400/50 text-white'
       }`}>
         <div className="flex items-center gap-3">
           {type === 'error' ? <XCircle size={20} /> : <CheckCircle2 size={20} />}
@@ -217,9 +218,22 @@ const Button = ({ children, onClick, variant = 'primary', icon: Icon, disabled, 
   );
 };
 
-// --- COMPONENTE DA LOJA (STORE MODAL) ---
+// --- COMPONENTE DA LOJA (STORE MODAL COM PAGAMENTO REAL) ---
 const StoreModal = ({ isOpen, onClose, user, userProfile, setToast }) => {
   const [loadingDaily, setLoadingDaily] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [paymentData, setPaymentData] = useState(null); // Guarda o PIX
+  const [initialTokens, setInitialTokens] = useState(0); // Para verificar quando o saldo aumenta
+  const [copiedPix, setCopiedPix] = useState(false);
+
+  // Efeito Mágico: Escuta o saldo. Se aumentar enquanto a tela do PIX está aberta, é sucesso!
+  useEffect(() => {
+    if (paymentData && userProfile?.tokens > initialTokens) {
+      setToast("Pagamento Confirmado! Moedas adicionadas à sua carteira.", "success");
+      setPaymentData(null); // Fecha o ecrã do PIX
+      // Opcional: onClose() se quiser fechar a loja inteira
+    }
+  }, [userProfile?.tokens, paymentData, initialTokens]);
   
   if (!isOpen) return null;
 
@@ -234,110 +248,204 @@ const StoreModal = ({ isOpen, onClose, user, userProfile, setToast }) => {
       await runTransaction(db, async (transaction) => {
         const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid);
         const userDoc = await transaction.get(userRef);
-        
         if (!userDoc.exists()) throw "Usuário não encontrado";
         
         const currentData = userDoc.data();
-        if (currentData.lastDailyCoinDate === todayStr) {
-          throw "Já resgatado";
-        }
+        if (currentData.lastDailyCoinDate === todayStr) throw "Já resgatado";
 
         transaction.update(userRef, {
           tokens: (currentData.tokens || 0) + 1,
           lastDailyCoinDate: todayStr
         });
       });
-
       setToast("1 Moeda resgatada com sucesso! Volte amanhã.", "success");
     } catch (err) {
-      if (err === "Já resgatado") {
-         setToast("Você já resgatou o bônus de hoje.");
-      } else {
-         setToast("Erro ao resgatar moeda diária.");
-      }
+      if (err === "Já resgatado") setToast("Você já resgatou o bônus de hoje.");
+      else setToast("Erro ao resgatar moeda diária.");
     } finally {
       setLoadingDaily(false);
     }
   };
 
-  const handleMockPurchase = (amount) => {
-    setToast(`Simulação: Você receberia ${amount} moedas! Integração PIX/Cartão no próximo passo.`, "success");
+  // O NOVO FLUXO DE PAGAMENTO REAL
+  const handleRealPurchase = async (amount, packageId) => {
+    if (!user) return;
+    setIsProcessingPayment(true);
+    
+    // Guarda o saldo atual para saber quando o webhook injetar as moedas
+    setInitialTokens(userProfile?.tokens || 0);
+
+    try {
+      const response = await fetch('/api/create-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: amount,
+          userId: user.uid,
+          packageId: packageId
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success && data.qr_code) {
+        setPaymentData(data);
+        setCopiedPix(false);
+      } else {
+        setToast("Erro ao gerar PIX: " + (data.error || 'Tente novamente mais tarde.'));
+      }
+    } catch (err) {
+      console.error(err);
+      setToast("Erro de comunicação com o servidor de pagamentos.");
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
+  const copyPixCode = () => {
+    copyToClipboardFallback(paymentData.qr_code);
+    setCopiedPix(true);
+    setToast("Código PIX Copiado!", "success");
+  };
+
+  const closeStore = () => {
+    setPaymentData(null); // Reseta o estado do PIX ao fechar
+    onClose();
   };
 
   return (
-    <div className="absolute inset-0 z-50 flex flex-col justify-end">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in" onClick={onClose}></div>
-      <div className="relative bg-[#18181b] border-t border-white/10 rounded-t-[2.5rem] p-8 space-y-8 animate-in slide-in-from-bottom-full shadow-[0_-20px_50px_rgba(0,0,0,0.5)]">
+    <div className="absolute inset-0 z-50 flex flex-col justify-center items-center p-4">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm animate-in fade-in" onClick={closeStore}></div>
+      
+      {/* Modal Centrado no Mobile */}
+      <div className="relative w-full max-w-sm bg-[#18181b] border border-white/10 rounded-[2.5rem] p-7 space-y-7 animate-in zoom-in-95 duration-200 shadow-[0_15px_60px_rgba(0,0,0,0.6)] max-h-[90vh] overflow-y-auto">
+        
+        {/* CABEÇALHO */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/30 text-yellow-500">
               <Store size={24} />
             </div>
             <div>
-              <h3 className="text-2xl font-black italic uppercase text-white tracking-tighter">Sua Carteira</h3>
+              <h3 className="text-2xl font-black italic uppercase text-white tracking-tighter">Carteira</h3>
               <p className="text-xs font-bold text-yellow-500 uppercase tracking-widest flex items-center gap-1">
                 Saldo: {userProfile?.tokens || 0} <Coins size={12}/>
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 bg-white/5 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-all">
+          <button onClick={closeStore} className="p-2 bg-white/5 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-all">
             <XCircle size={24} />
           </button>
         </div>
 
         <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
 
-        <div className="bg-gradient-to-br from-[#09090b] to-cyan-900/20 border border-cyan-500/20 p-6 rounded-3xl space-y-4">
-          <div className="flex items-start justify-between">
-            <div className="space-y-1">
-              <h4 className="text-white font-black italic uppercase tracking-tighter flex items-center gap-2">
-                <CalendarHeart size={18} className="text-cyan-400" /> Bônus Diário
-              </h4>
-              <p className="text-xs text-slate-400 leading-relaxed font-medium">Volte todos os dias para resgatar 1 Moeda gratuitamente e revelar um segredo.</p>
+        {/* --- ECRÃ DO PIX (Ativo após o clique na compra) --- */}
+        {paymentData ? (
+          <div className="space-y-6 text-center animate-in slide-in-from-right-10 duration-300">
+            <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-3xl p-6 space-y-4">
+              <h4 className="text-xl font-black text-white italic tracking-tighter uppercase">Pague via PIX</h4>
+              <p className="text-xs text-slate-300 font-medium leading-relaxed">
+                Abra a aplicação do seu banco, leia o QR Code ou cole o código abaixo para adicionar moedas instantaneamente.
+              </p>
+              
+              <div className="bg-white p-3 rounded-2xl inline-block mx-auto shadow-[0_0_20px_rgba(6,182,212,0.3)]">
+                {/* O MP devolve a imagem em base64 nativa */}
+                <img src={`data:image/png;base64,${paymentData.qr_code_base64}`} alt="QR Code PIX" className="w-48 h-48" />
+              </div>
+
+              <div className="space-y-2 mt-4 text-left">
+                <p className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest pl-1">Pix Copia e Cola</p>
+                <div className="flex gap-2">
+                  <input type="text" readOnly value={paymentData.qr_code} className="flex-1 bg-[#09090b] border border-white/10 rounded-xl px-4 py-3 text-xs text-slate-400 focus:outline-none" />
+                  <Button onClick={copyPixCode} variant={copiedPix ? 'success' : 'primary'} className="!w-auto !px-4 !py-3">
+                    {copiedPix ? <CheckCircle2 size={18}/> : <Copy size={18}/>}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-2">
+               <Loader2 size={20} className="animate-spin text-cyan-500" />
+               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest animate-pulse">Aguardando confirmação do pagamento...</p>
+            </div>
+            
+            <Button onClick={() => setPaymentData(null)} variant="ghost" className="!mt-2">Cancelar e Voltar</Button>
+          </div>
+        ) : (
+          /* --- ECRÃ DA VITRINE (Pacotes) --- */
+          <div className="space-y-7 animate-in fade-in duration-300">
+            {/* 1. Bônus Diário */}
+            <div className="bg-gradient-to-br from-[#09090b] to-cyan-900/20 border border-cyan-500/20 p-5 rounded-3xl space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="space-y-1">
+                  <h4 className="text-white font-black italic uppercase tracking-tighter flex items-center gap-2">
+                    <CalendarHeart size={18} className="text-cyan-400" /> Bônus Diário
+                  </h4>
+                  <p className="text-[11px] text-slate-400 leading-relaxed font-medium">Volte todos os dias para resgatar 1 Moeda gratuitamente e revelar um segredo.</p>
+                </div>
+              </div>
+              <Button 
+                onClick={handleClaimDaily} 
+                loading={loadingDaily} 
+                disabled={!canClaimDaily} 
+                variant={canClaimDaily ? 'primary' : 'secondary'}
+                icon={Coins}
+                className="!py-3 !text-sm"
+              >
+                {canClaimDaily ? 'Resgatar 1 Moeda' : 'Já resgatado hoje'}
+              </Button>
+            </div>
+
+            {/* 2. Vitrine de Pacotes Reais */}
+            <div className="space-y-4 relative">
+              {/* Loader overlay caso a requisição do PIX demore a gerar */}
+              {isProcessingPayment && (
+                <div className="absolute inset-0 bg-[#18181b]/80 backdrop-blur-sm z-10 rounded-2xl flex flex-col items-center justify-center">
+                  <Loader2 size={30} className="animate-spin text-yellow-500" />
+                  <span className="text-xs font-bold text-yellow-500 mt-2 uppercase tracking-widest">A Gerar PIX...</span>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <CreditCard size={18} className="text-slate-400"/>
+                <h4 className="text-slate-300 font-bold uppercase tracking-widest text-[11px]">Tem pressa? Compre Moedas</h4>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-2">
+                {/* Pacote 1 Moeda - 0.99 */}
+                <button onClick={() => handleRealPurchase(0.99, 1)} className="bg-[#09090b] border border-white/5 hover:border-yellow-500/50 py-3 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 group">
+                  <div className="text-yellow-600 group-hover:scale-110 transition-transform"><Coins size={22}/></div>
+                  <div className="text-center mt-1">
+                    <span className="block font-black text-white italic tracking-tighter text-sm">1 Moeda</span>
+                    <span className="text-[10px] text-slate-400 font-bold">R$ 0,99</span>
+                  </div>
+                </button>
+
+                {/* Pacote 5 Moedas - 3.99 */}
+                <button onClick={() => handleRealPurchase(3.99, 5)} className="bg-[#09090b] border border-white/5 hover:border-yellow-500/50 py-3 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 group">
+                  <div className="text-yellow-500 group-hover:scale-110 transition-transform flex"><Coins size={22}/><Coins size={22} className="-ml-3 opacity-80"/></div>
+                  <div className="text-center mt-1">
+                    <span className="block font-black text-white italic tracking-tighter text-sm">5 Moedas</span>
+                    <span className="text-[10px] text-slate-400 font-bold">R$ 3,99</span>
+                  </div>
+                </button>
+
+                {/* Pacote 10 Moedas - 5.99 */}
+                <button onClick={() => handleRealPurchase(5.99, 10)} className="bg-gradient-to-b from-yellow-500/20 to-[#09090b] border border-yellow-500/50 hover:border-yellow-400 py-3 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 relative overflow-hidden group shadow-[0_0_15px_rgba(234,179,8,0.15)]">
+                  <div className="absolute top-0 inset-x-0 bg-yellow-500 text-yellow-950 text-[8px] font-black uppercase py-0.5 text-center">Melhor Valor</div>
+                  <div className="text-yellow-400 group-hover:scale-110 transition-transform flex mt-2"><Coins size={24}/><Coins size={24} className="-ml-3"/></div>
+                  <div className="text-center mt-1">
+                    <span className="block font-black text-yellow-400 italic tracking-tighter text-base drop-shadow-[0_0_10px_rgba(234,179,8,0.5)]">10 Moedas</span>
+                    <span className="text-[11px] text-yellow-500 font-black">R$ 5,99</span>
+                  </div>
+                </button>
+              </div>
             </div>
           </div>
-          <Button 
-            onClick={handleClaimDaily} 
-            loading={loadingDaily} 
-            disabled={!canClaimDaily} 
-            variant={canClaimDaily ? 'primary' : 'secondary'}
-            icon={Coins}
-          >
-            {canClaimDaily ? 'Resgatar 1 Moeda Grátis' : 'Já resgatado hoje'}
-          </Button>
-          {!canClaimDaily && <p className="text-[10px] text-center text-slate-500 font-bold uppercase tracking-widest">Volte amanhã para mais!</p>}
-        </div>
+        )}
 
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <CreditCard size={18} className="text-slate-400"/>
-            <h4 className="text-slate-300 font-bold uppercase tracking-widest text-xs">Tem pressa? Compre Moedas</h4>
-          </div>
-          <div className="grid grid-cols-3 gap-2 sm:gap-3">
-            <button onClick={() => handleMockPurchase(1)} className="bg-[#09090b] border border-white/5 hover:border-yellow-500/50 py-4 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 group">
-              <div className="text-yellow-600 group-hover:scale-110 transition-transform"><Coins size={24}/></div>
-              <div className="text-center mt-2">
-                <span className="block font-black text-white italic tracking-tighter text-sm sm:text-base">1 Moeda</span>
-                <span className="text-[10px] text-slate-400 font-bold">R$ 0,99</span>
-              </div>
-            </button>
-            <button onClick={() => handleMockPurchase(5)} className="bg-[#09090b] border border-white/5 hover:border-yellow-500/50 py-4 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 group">
-              <div className="text-yellow-500 group-hover:scale-110 transition-transform flex"><Coins size={24}/><Coins size={24} className="-ml-3 opacity-80"/></div>
-              <div className="text-center mt-2">
-                <span className="block font-black text-white italic tracking-tighter text-sm sm:text-base">5 Moedas</span>
-                <span className="text-[10px] text-slate-400 font-bold">R$ 3,99</span>
-              </div>
-            </button>
-            <button onClick={() => handleMockPurchase(10)} className="bg-gradient-to-b from-yellow-500/20 to-[#09090b] border border-yellow-500/50 hover:border-yellow-400 py-4 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 relative overflow-hidden group shadow-[0_0_15px_rgba(234,179,8,0.15)]">
-              <div className="absolute top-0 inset-x-0 bg-yellow-500 text-yellow-950 text-[8px] font-black uppercase py-0.5 text-center">Melhor Valor</div>
-              <div className="text-yellow-400 group-hover:scale-110 transition-transform flex mt-2"><Coins size={26}/><Coins size={26} className="-ml-3"/></div>
-              <div className="text-center mt-1">
-                <span className="block font-black text-yellow-400 italic tracking-tighter text-base sm:text-lg drop-shadow-[0_0_10px_rgba(234,179,8,0.5)]">10 Moedas</span>
-                <span className="text-[11px] text-yellow-500 font-black">R$ 5,99</span>
-              </div>
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -561,7 +669,6 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
       const msgId = crypto.randomUUID();
       
       try {
-        // 🚀 OTIMIZAÇÃO: Transação atômica que cria a mensagem e já notifica o destinatário no unreadCount
         await runTransaction(db, async (transaction) => {
           const targetUserRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', targetUid);
           const msgRef = doc(db, 'artifacts', appId, 'public', 'data', 'messages', msgId);
@@ -570,7 +677,6 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
           const targetUserSnap = await transaction.get(targetUserRef);
           if (!targetUserSnap.exists()) throw "Destinatário não encontrado";
 
-          // Cria a mensagem pública (sem a identidade)
           transaction.set(msgRef, {
             id: msgId, 
             targetUid, 
@@ -581,13 +687,11 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
             status: 'sent'
           });
 
-          // Cria a identidade no cofre
           transaction.set(idRef, {
             senderName: finalName,
             senderPhoto: currentUser.photoURL || ''
           });
 
-          // Incrementa o contador de não lidas do destinatário (Otimização de Leituras)
           const currentUnread = targetUserSnap.data().unreadCount || 0;
           transaction.update(targetUserRef, { unreadCount: currentUnread + 1 });
         });
@@ -661,8 +765,6 @@ const InboxScreen = ({ user, userProfile, onSelectMessage, onBack, setToast, onO
 
   useEffect(() => {
     if (!user) return;
-    // O InbloxScreen é o único lugar que faz o onSnapshot (download da lista de mensagens).
-    // Isto garante que o utilizador só consome os seus dados se decidir realmente abrir a caixa.
     const msgRef = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
     return onSnapshot(msgRef, (snap) => {
       setMessages(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -749,7 +851,6 @@ const InboxScreen = ({ user, userProfile, onSelectMessage, onBack, setToast, onO
                   <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-full flex items-center gap-1 ${msg.isRevealed ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-pink-500/10 text-pink-400 border border-pink-500/20'}`}>
                      {msg.isRevealed ? <CheckCircle2 size={10}/> : <Lock size={10}/>}
                      {msg.isRevealed ? 'Identidade Revelada' : 'Segredo Trancado'}
-                     {/* Bolinha extra para mensagens novas (não visualizadas) */}
                      {activeTab === 'received' && msg.status === 'sent' && <span className="ml-1 w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></span>}
                   </span>
                   
@@ -761,7 +862,6 @@ const InboxScreen = ({ user, userProfile, onSelectMessage, onBack, setToast, onO
                       </div>
                     )}
                     
-                    {/* Botão de Exclusão com Confirmação Inline */}
                     {confirmDeleteId === msg.id ? (
                       <div className="flex items-center gap-2">
                         <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }} className="text-[10px] text-slate-400 hover:text-white px-2 py-1 font-bold">Cancelar</button>
@@ -793,7 +893,6 @@ const ViralPaywallScreen = ({ user, userProfile, message, onUnlock, setToast, on
 
   useEffect(() => { 
     const checkStatus = async () => {
-      // 🚀 OTIMIZAÇÃO DE LEITURAS: Subtrai o unreadCount assim que a pessoa vê a mensagem no Paywall
       if (message.status === 'sent') {
         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', message.id), { status: 'viewed' });
         
@@ -823,7 +922,6 @@ const ViralPaywallScreen = ({ user, userProfile, message, onUnlock, setToast, on
     }
     setIsProcessing(true);
     try {
-      // Transação Atômica para deduzir moeda e revelar
       await runTransaction(db, async (transaction) => {
         const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid);
         const msgRef = doc(db, 'artifacts', appId, 'public', 'data', 'messages', message.id);
@@ -948,6 +1046,7 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [toastType, setToastType] = useState('error');
   const [isStoreOpen, setIsStoreOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const showToast = (msg, type = 'error') => {
     setToast(msg);
@@ -976,14 +1075,26 @@ export default function App() {
     return onAuthStateChanged(auth, setUser);
   }, []);
 
-  // Monitora APENAS o perfil do usuário (1 única leitura de documento em vez de milhares)
   useEffect(() => {
     if (!user) return;
+    
+    // Perfil
     const unsubProfile = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid), (d) => {
       if(d.exists()) setUserProfile(d.data());
     }, (error) => console.error(error));
 
-    return () => unsubProfile();
+    // Contador
+    const msgRef = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
+    const unsubMessages = onSnapshot(msgRef, (snap) => {
+      const msgs = snap.docs.map(doc => doc.data());
+      const unread = msgs.filter(m => m.targetUid === user.uid && m.status === 'sent').length;
+      setUnreadCount(unread);
+    }, (error) => console.error(error));
+
+    return () => {
+      unsubProfile();
+      unsubMessages();
+    };
   }, [user]);
 
   useEffect(() => {
@@ -1018,14 +1129,14 @@ export default function App() {
       </div>
 
       <div className="w-full max-w-md bg-[#18181b] min-h-screen shadow-2xl relative flex flex-col z-10 border-x border-white/5 overflow-hidden">
-        {screen === 1 && <CreateLinkScreen user={user} referrerUid={referrerUid} onNext={setScreen} setToast={showToast} unreadCount={userProfile?.unreadCount || 0} />}
+        {screen === 1 && <CreateLinkScreen user={user} referrerUid={referrerUid} onNext={setScreen} setToast={showToast} unreadCount={unreadCount} />}
         {screen === 2 && <LinkReadyScreen user={user} onNext={setScreen} />}
         {screen === 3 && targetUid && <SendSecretScreen targetUid={targetUid} user={user} onReset={() => setScreen(1)} setToast={showToast} />}
         {screen === 4 && <InboxScreen user={user} userProfile={userProfile} onBack={() => setScreen(1)} onSelectMessage={msg => { setSelectedMessage(msg); setScreen(5); }} setToast={showToast} onOpenStore={() => setIsStoreOpen(true)} />}
         {screen === 5 && selectedMessage && <ViralPaywallScreen user={user} userProfile={userProfile} message={selectedMessage} onBack={() => setScreen(4)} onUnlock={(msgWithId) => { setSelectedMessage(msgWithId || selectedMessage); setScreen(6); }} setToast={showToast} onOpenStore={() => setIsStoreOpen(true)} />}
         {screen === 6 && selectedMessage && <RevealScreen message={selectedMessage} onBack={() => setScreen(4)} />}
         
-        {/* Modal da Loja/Carteira (Válvula de Escape) */}
+        {/* Modal da Loja/Carteira com PIX Real */}
         <StoreModal isOpen={isStoreOpen} onClose={() => setIsStoreOpen(false)} user={user} userProfile={userProfile} setToast={showToast} />
       </div>
 

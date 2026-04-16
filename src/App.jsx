@@ -31,12 +31,13 @@ import {
   Unlock,
   AlertCircle,
   ArrowRight,
-  XCircle
+  XCircle,
+  Globe
 } from 'lucide-react';
 
 /**
  * PROJETO OFFIN - VERSÃO DE PRODUÇÃO CORRIGIDA
- * Foco: Persistência de UID e Robustez de Login Google
+ * Foco: Resiliência de Autenticação e Diagnóstico de Domínio
  */
 
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
@@ -81,12 +82,14 @@ const Toast = ({ message, type = 'error', onClose }) => {
   if (!message) return null;
   return (
     <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 duration-300 w-[90%] max-w-xs">
-      <div className={`px-6 py-4 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-3 border ${
+      <div className={`px-6 py-4 rounded-2xl shadow-2xl backdrop-blur-md flex flex-col gap-2 border ${
         type === 'error' ? 'bg-red-500/95 border-red-400 text-white' : 'bg-cyan-500/95 border-cyan-400 text-white'
       }`}>
-        {type === 'error' ? <XCircle size={20} className="shrink-0" /> : <CheckCircle2 size={20} className="shrink-0" />}
-        <p className="text-xs font-bold leading-tight">{message}</p>
-        <button onClick={onClose} className="ml-auto opacity-50 hover:opacity-100"><XCircle size={16} /></button>
+        <div className="flex items-center gap-3">
+          {type === 'error' ? <XCircle size={20} className="shrink-0" /> : <CheckCircle2 size={20} className="shrink-0" />}
+          <p className="text-xs font-bold leading-tight flex-1">{message}</p>
+          <button onClick={onClose} className="opacity-50 hover:opacity-100"><XCircle size={16} /></button>
+        </div>
       </div>
     </div>
   );
@@ -277,19 +280,28 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
       try {
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
-        // Se linkWithPopup falhar, tentamos signInWithPopup direto
+        
         try {
           const result = await linkWithPopup(user, provider);
           await sendToDB(result.user);
         } catch (linkErr) {
-          console.error("Erro no linkWithPopup, tentando signInWithPopup:", linkErr);
-          const result = await signInWithPopup(auth, provider);
-          await sendToDB(result.user);
+          if (linkErr.code === 'auth/unauthorized-domain') {
+            const currentDomain = window.location.hostname;
+            setToast(`Domínio não autorizado. Adicione "${currentDomain}" no Console do Firebase.`);
+            setLoading(false);
+          } else {
+            console.error("Tentando login direto por falha no link:", linkErr);
+            const result = await signInWithPopup(auth, provider);
+            await sendToDB(result.user);
+          }
         }
       } catch (error) { 
         setLoading(false); 
-        console.error("Erro Google Auth:", error);
-        setToast(`Falha no Google: ${error.code || 'Erro desconhecido'}`);
+        if (error.code === 'auth/unauthorized-domain') {
+          setToast(`Adicione "${window.location.hostname}" aos domínios autorizados no Firebase.`);
+        } else {
+          setToast(`Erro Google: ${error.code}`);
+        }
       }
     } else { await sendToDB(user); }
   };
@@ -348,13 +360,19 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
       try {
         await linkWithPopup(user, provider);
       } catch (linkErr) {
-        console.warn("Link falhou, tentando login direto:", linkErr);
-        await signInWithPopup(auth, provider);
+        if (linkErr.code === 'auth/unauthorized-domain') {
+          setToast(`Domínio não autorizado. Adicione "${window.location.hostname}" no Firebase.`);
+        } else {
+          await signInWithPopup(auth, provider);
+        }
       }
       setToast("Conta salva com sucesso!", "success");
     } catch (e) { 
-      console.error("Erro Google Login:", e); 
-      setToast(`Erro ao salvar: ${e.code || 'Verifique as permissões'}`);
+      if (e.code === 'auth/unauthorized-domain') {
+        setToast(`Adicione "${window.location.hostname}" aos domínios autorizados no Firebase.`);
+      } else {
+        setToast(`Erro ao salvar: ${e.code}`);
+      }
     } finally { setLinking(false); }
   };
 

@@ -1,1 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Política de Privacidade - OFFin</title>
+    
+    <!-- Tailwind CSS com plugin de tipografia -->
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
 
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap');
+
+        body {
+            background-color: #18181b;
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .bg-brushed-steel {
+            background-image: 
+                repeating-linear-gradient(105deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 4px),
+                repeating-linear-gradient(105deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.1) 2px, transparent 2px, transparent 6px);
+            mix-blend-mode: overlay;
+        }
+    </style>
+</head>
+<body class="relative min-h-screen antialiased selection:bg-cyan-500 selection:text-white">
+
+    <!-- Fundo Estilizado -->
+    <div class="fixed inset-0 pointer-events-none z-[-2]">
+        <div class="absolute inset-0 bg-[#18181b]"></div>
+        <div class="absolute bottom-[-20%] right-[-10%] w-[60vw] h-[60vw] bg-cyan-600/10 blur-[120px] rounded-full mix-blend-screen"></div>
+        <div class="absolute inset-0 bg-brushed-steel opacity-60"></div>
+    </div>
+
+    <!-- Navegação -->
+    <nav class="relative z-50 w-full px-6 py-6 flex items-center justify-between max-w-4xl mx-auto border-b border-white/5">
+        <a href="index.html" class="text-2xl font-black italic tracking-tighter text-white">
+            OFF<span class="text-cyan-500">in</span>
+        </a>
+        <a href="index.html" class="text-sm font-bold text-slate-400 hover:text-white flex items-center gap-2 transition-colors">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i> Voltar
+        </a>
+    </nav>
+
+    <!-- Conteúdo Principal -->
+    <main class="relative z-10 max-w-3xl mx-auto py-16 px-6">
+        <article class="prose prose-invert prose-cyan lg:prose-lg max-w-none">
+            <h1 class="text-4xl font-extrabold text-white mb-2 tracking-tight">Política de Privacidade</h1>
+            <p class="text-xs text-slate-500 font-bold uppercase tracking-widest mt-0 mb-12">Conformidade LGPD | Actualizado em: 15 de Abril de 2026</p>
+
+            <p>A sua privacidade é uma prioridade para o **OFFin Network**. Esta política descreve como os seus dados são tratados, protegidos e quais são os seus direitos enquanto titular, de acordo com a Lei Geral de Proteção de Dados (LGPD).</p>
+
+            <h3>1. Coleta de Dados e Finalidade</h3>
+            <p>Para garantir a funcionalidade da "armadilha de curiosidade", o OFFin coleta os seguintes dados:</p>
+            <ul>
+                <li><strong>Dados de Autenticação:</strong> Nome, e-mail e foto de perfil obtidos via Google Auth para validar a identidade do remetente.</li>
+                <li><strong>Mensagens:</strong> O conteúdo de texto enviado através dos links gerados.</li>
+                <li><strong>Metadados:</strong> Registos de acesso (IP e data/hora) para fins de segurança e cumprimento do Marco Civil da Internet.</li>
+            </ul>
+
+            <h3>2. O Mecanismo de Revelação</h3>
+            <p>O utilizador compreende que, ao enviar uma mensagem, os seus dados de identificação (nome e foto) são armazenados num "cofre digital". Estes dados serão revelados ao destinatário apenas quando este cumprir os requisitos de interacção (partilha de link) definidos pelo algoritmo da aplicação.</p>
+
+            <h3>3. Compartilhamento de Dados</h3>
+            <p>O OFFin não vende dados a terceiros. O compartilhamento ocorre apenas:</p>
+            <ul>
+                <li>Com o destinatário da mensagem, após o desbloqueio da revelação.</li>
+                <li>Com autoridades judiciais, mediante ordem formal fundamentada.</li>
+            </ul>
+
+            <h3>4. Segurança e Retenção</h3>
+            <p>Utilizamos infraestrutura de nuvem segura com criptografia em repouso. Os dados permanecem activos enquanto a conta existir ou até que o utilizador solicite a exclusão definitiva através do nosso canal de suporte.</p>
+
+            <h3>5. Seus Direitos</h3>
+            <p>Pode solicitar a qualquer momento o acesso, a correcção ou a eliminação dos seus dados pessoais. Para questões relacionadas com a privacidade, entre em contacto através do e-mail de suporte indicado na nossa página oficial.</p>
+        </article>
+    </main>
+
+    <footer class="text-center py-12 border-t border-white/5 text-slate-600 text-[10px] uppercase tracking-[0.2em] font-bold">
+        &copy; 2026 OFFin Network
+    </footer>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

@@ -40,13 +40,13 @@ import {
   Image as ImageIcon,
   User,
   Eye,
-  ExternalLink,
-  LogOut
+  Coins,
+  Ticket
 } from 'lucide-react';
 
 /**
- * PROJETO OFFIN - VERSÃO DE PRODUÇÃO V8 (FINAL PT-BR)
- * Foco: Resolução de Identidade Anônima, Fluxo de Login Único e Ajuste de Imagem Story.
+ * PROJETO OFFIN - VERSÃO DE PRODUÇÃO V10 (TOKEN ECONOMY)
+ * Foco: Sistema de Moedas, Referrals (Indicações) e Paywall Autêntico
  */
 
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
@@ -97,27 +97,24 @@ const copyToClipboardFallback = (text) => {
   document.body.removeChild(textArea);
 };
 
-// --- GERADOR DE IMAGEM PARA STORIES (CORRIGIDO) ---
+// --- GERADOR DE IMAGEM PARA STORIES ---
 const downloadStoryImage = (handle) => {
   const canvas = document.createElement('canvas');
   canvas.width = 1080;
   canvas.height = 1920;
   const ctx = canvas.getContext('2d');
 
-  // 1. Fundo
   const grad = ctx.createLinearGradient(0, 0, 1080, 1920);
   grad.addColorStop(0, '#0f172a');
   grad.addColorStop(1, '#1e293b');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 1080, 1920);
 
-  // 2. Cabeçalho com URL
   ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
   ctx.font = 'bold 36px sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('https://off-in.vercel.app/', 540, 120);
 
-  // 3. Logo OFFIN (Ajustada para não bugar)
   ctx.shadowColor = 'rgba(6, 182, 212, 0.8)';
   ctx.shadowBlur = 30;
   ctx.fillStyle = '#ffffff';
@@ -130,7 +127,6 @@ const downloadStoryImage = (handle) => {
   ctx.fillText('IN', 720, 480);
   ctx.shadowBlur = 0;
 
-  // 4. Caixa de Chamada
   ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
   if (ctx.roundRect) ctx.roundRect(120, 750, 840, 400, 80); else ctx.rect(120, 750, 840, 400);
   ctx.fill();
@@ -144,7 +140,6 @@ const downloadStoryImage = (handle) => {
   ctx.font = '400 50px sans-serif';
   ctx.fillText('EU VOU REVELAR QUEM É! 👀', 540, 1030);
 
-  // 5. Área do Adesivo (Link) - Curta e direta
   ctx.fillStyle = '#06b6d4';
   ctx.font = '900 120px sans-serif';
   ctx.fillText('LINK', 540, 1420);
@@ -152,7 +147,6 @@ const downloadStoryImage = (handle) => {
   ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
   ctx.fillText('👇 COLE O ADESIVO AQUI 👇', 540, 1500);
 
-  // 6. Rodapé Instigante
   ctx.fillStyle = '#ffffff';
   ctx.font = 'italic 42px sans-serif';
   ctx.fillText('Até que ponto a curiosidade pode chegar?', 540, 1750);
@@ -160,7 +154,6 @@ const downloadStoryImage = (handle) => {
   ctx.font = 'bold 48px sans-serif';
   ctx.fillText('Descubra você também!', 540, 1830);
 
-  // 7. Download
   const link = document.createElement('a');
   link.download = `offin-desafio.png`;
   link.href = canvas.toDataURL('image/png');
@@ -204,6 +197,7 @@ const Button = ({ children, onClick, variant = 'primary', icon: Icon, disabled, 
     secondary: 'bg-slate-800 text-slate-300 border border-slate-700',
     ghost: 'bg-transparent text-slate-400 font-medium text-sm',
     success: 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20',
+    warning: 'bg-yellow-500 text-yellow-950 shadow-lg shadow-yellow-500/20',
   };
   return (
     <button onClick={onClick} disabled={disabled || loading} className={`${base} ${variants[variant]} ${className}`}>
@@ -219,7 +213,7 @@ const Button = ({ children, onClick, variant = 'primary', icon: Icon, disabled, 
 
 // --- TELAS ---
 
-const CreateLinkScreen = ({ user, onNext, setToast }) => {
+const CreateLinkScreen = ({ user, referrerUid, onNext, setToast }) => {
   const [handle, setHandle] = useState('@');
   const [loading, setLoading] = useState(false);
 
@@ -229,12 +223,34 @@ const CreateLinkScreen = ({ user, onNext, setToast }) => {
     try {
       const cleanHandle = handle.trim().replace('@', '');
       const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid);
-      await setDoc(userRef, { 
-        uid: user.uid, 
-        handle: cleanHandle, 
-        createdAt: new Date().toISOString(),
-        isPermanent: !user.isAnonymous
-      }, { merge: true });
+      const userSnap = await getDoc(userRef);
+
+      // Se for a primeira vez criando o perfil
+      if (!userSnap.exists()) {
+        await setDoc(userRef, { 
+          uid: user.uid, 
+          handle: cleanHandle, 
+          createdAt: new Date().toISOString(),
+          isPermanent: !user.isAnonymous,
+          tokens: 1 // Dá 1 moeda de boas-vindas
+        });
+
+        // SISTEMA DE REFERRAL (AFILIADO)
+        // Se este usuário chegou através do link de alguém (referrerUid), damos 1 moeda ao padrinho!
+        if (referrerUid && referrerUid !== user.uid) {
+          const refRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', referrerUid);
+          const refSnap = await getDoc(refRef);
+          if (refSnap.exists()) {
+            await updateDoc(refRef, {
+              tokens: (refSnap.data().tokens || 0) + 1
+            });
+          }
+        }
+      } else {
+        // Apenas atualiza
+        await updateDoc(userRef, { handle: cleanHandle, isPermanent: !user.isAnonymous });
+      }
+
       onNext(2); 
     } catch (err) { setToast("Erro ao salvar perfil."); } finally { setLoading(false); }
   };
@@ -295,8 +311,13 @@ const LinkReadyScreen = ({ user, onNext }) => {
         <CheckCircle2 size={40} />
       </div>
       <h2 className="text-3xl font-black text-white mb-2 italic tracking-tighter uppercase">Link Gerado!</h2>
-      <p className="text-slate-400 mb-10 text-sm">Poste no Instagram seguindo os passos abaixo.</p>
+      <p className="text-slate-400 mb-6 text-sm">Poste no Instagram seguindo os passos abaixo.</p>
       
+      <div className="bg-yellow-500/10 border border-yellow-500/30 p-4 rounded-2xl mb-8 flex items-center gap-3 w-full max-w-sm">
+         <div className="bg-yellow-500 text-yellow-950 p-2 rounded-full"><Coins size={20}/></div>
+         <p className="text-xs text-yellow-500 font-bold text-left leading-tight">Você ganhou <span className="text-yellow-400 font-black text-sm">1 Moeda</span> de boas-vindas para revelar seu primeiro segredo!</p>
+      </div>
+
       <div className="space-y-6 w-full max-w-sm">
         <div className="bg-slate-900 border border-slate-800 p-8 rounded-[3rem] space-y-8 shadow-2xl">
           <div className="space-y-3">
@@ -340,12 +361,17 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
     setLoading(true);
 
     const performSend = (currentUser) => {
+      let finalName = currentUser.displayName;
+      if (!finalName && currentUser.email) finalName = currentUser.email.split('@')[0];
+      if (!finalName && currentUser.providerData && currentUser.providerData.length > 0) finalName = currentUser.providerData[0].displayName;
+      if (!finalName) finalName = "Identidade Oculta";
+
       const msgId = crypto.randomUUID();
       return setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', msgId), {
         id: msgId, 
         targetUid, 
         senderUid: currentUser.uid,
-        senderName: currentUser.displayName || 'Usuário Google',
+        senderName: finalName,
         senderPhoto: currentUser.photoURL || '',
         text: message.trim(), 
         createdAt: new Date().toISOString(), 
@@ -379,8 +405,8 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
     <div className="flex flex-col min-h-screen bg-slate-50 items-center justify-center p-8 text-center animate-in zoom-in">
       <CheckCircle2 size={64} className="text-emerald-500 mb-6" />
       <h2 className="text-3xl font-black italic mb-4 text-slate-900 tracking-tighter">ENVIADO COM SUCESSO! 🤫</h2>
-      <p className="text-slate-500 mb-10 text-sm">@{targetHandle} só vai saber que foi você se aceitar o desafio.</p>
-      <Button onClick={onReset}>Quero Criar Meu Link Também</Button>
+      <p className="text-slate-500 mb-10 text-sm">@{targetHandle} só vai saber que foi você se gastar as Moedas dele.</p>
+      <Button onClick={onReset} icon={Ticket}>Quero Criar Meu Link Também</Button>
     </div>
   );
 
@@ -402,14 +428,14 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
           <Button onClick={handleSend} loading={loading} disabled={!message.trim()} icon={Send}>
             {user?.isAnonymous ? 'Identificar e Enviar' : 'Enviar Segredo'}
           </Button>
-          <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Sua identidade será revelada apenas se ele publicar.</p>
+          <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Sua identidade será revelada apenas se ele gastar moedas.</p>
         </div>
       </div>
     </div>
   );
 };
 
-const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
+const InboxScreen = ({ user, userProfile, onSelectMessage, onBack, setToast }) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('received');
@@ -419,6 +445,9 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
     const msgRef = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
     return onSnapshot(msgRef, (snap) => {
       setMessages(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    }, (error) => {
+      console.error("Erro no onSnapshot de messages:", error);
       setLoading(false);
     });
   }, [user]);
@@ -441,7 +470,9 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
         <button onClick={onBack} className="text-slate-400 p-2"><ChevronLeft /></button>
         <div className="text-center">
            <h1 className="font-black text-slate-800 text-lg italic tracking-tighter uppercase">OFF<span className="text-cyan-500">IN</span> RADAR</h1>
-           {!user?.isAnonymous && <span className="text-[10px] text-cyan-500 font-black block">{user.displayName}</span>}
+           <div className="flex items-center justify-center gap-1 text-yellow-500 font-black text-[11px] mt-0.5">
+             <Coins size={12}/> {userProfile?.tokens || 0} Moedas
+           </div>
         </div>
         <div className="flex items-center gap-3">
           {user?.isAnonymous ? (
@@ -450,7 +481,7 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
             </button>
           ) : (
             <div className="w-10 h-10 rounded-full border-2 border-white overflow-hidden shadow-md">
-               <img src={user?.photoURL} alt="Profile" className="w-full h-full object-cover" />
+               <img src={user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.uid}`} alt="Profile" className="w-full h-full object-cover" />
             </div>
           )}
         </div>
@@ -484,7 +515,8 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
             (activeTab === 'received' ? receivedMsgs : sentMsgs).map(msg => (
               <div key={msg.id} onClick={() => activeTab === 'received' && onSelectMessage(msg)} className={`bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 transition-all ${activeTab === 'received' ? 'cursor-pointer active:scale-95 hover:border-cyan-200' : 'opacity-80'}`}>
                 <div className="flex items-center justify-between mb-4">
-                  <span className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-full ${msg.isRevealed ? 'bg-emerald-100 text-emerald-600' : 'bg-pink-100 text-pink-600'}`}>
+                  <span className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-full flex items-center gap-1 ${msg.isRevealed ? 'bg-emerald-100 text-emerald-600' : 'bg-pink-100 text-pink-600'}`}>
+                     {msg.isRevealed ? <CheckCircle2 size={10}/> : <Lock size={10}/>}
                      {msg.isRevealed ? 'Identidade Revelada' : 'Segredo Trancado'}
                   </span>
                   {activeTab === 'sent' && (
@@ -495,7 +527,7 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
                   )}
                 </div>
                 <p className="italic text-slate-700 font-serif text-xl leading-relaxed tracking-tight">"{msg.text}"</p>
-                {activeTab === 'received' && !msg.isRevealed && <div className="mt-6 flex items-center gap-2 text-[10px] font-black text-cyan-500 uppercase tracking-widest">Revelar Quem Mandou <ArrowRight size={14}/></div>}
+                {activeTab === 'received' && !msg.isRevealed && <div className="mt-6 flex items-center gap-2 text-[10px] font-black text-cyan-500 uppercase tracking-widest">Usar Moeda para Revelar <ArrowRight size={14}/></div>}
               </div>
             ))
           )
@@ -505,34 +537,75 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
   );
 };
 
-const ViralPaywallScreen = ({ user, message, onUnlock }) => {
+const ViralPaywallScreen = ({ user, userProfile, message, onUnlock, setToast }) => {
   const [copied, setCopied] = useState(false);
+  const tokens = userProfile?.tokens || 0;
+  const [isProcessing, setIsProcessing] = useState(false);
+
   useEffect(() => { 
     if (message.isRevealed) onUnlock(); 
     if (message.status === 'sent') updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', message.id), { status: 'viewed' });
   }, [message]);
 
-  const handlePaywall = async () => {
+  const handleUnlock = async () => {
+    if (tokens < 1) {
+       setToast("Você não tem moedas! Compartilhe seu link para ganhar.");
+       return;
+    }
+    setIsProcessing(true);
+    try {
+      // 1. Debita a moeda
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid), {
+        tokens: tokens - 1
+      });
+      // 2. Revela a mensagem
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', message.id), { 
+        isRevealed: true, status: 'revealed' 
+      });
+      setTimeout(() => onUnlock(), 800);
+    } catch(e) {
+      setToast("Erro ao processar o pagamento.");
+      setIsProcessing(false);
+    }
+  };
+
+  const handleCopyLink = () => {
     const shareLink = `${APP_URL}?u=${user.uid}`;
     copyToClipboardFallback(shareLink);
     setCopied(true);
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', message.id), { isRevealed: true, status: 'revealed' });
-    setTimeout(() => onUnlock(), 1200);
+    setToast("Link copiado! Poste no Instagram.", "success");
   };
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-900 text-white p-10 text-center justify-center space-y-12">
       <Lock size={72} className="text-pink-500 mx-auto animate-pulse" />
-      <h2 className="text-4xl font-black italic uppercase tracking-tighter italic leading-none">Quem enviou <br/> esse segredo?</h2>
+      <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none">Quem enviou <br/> esse segredo?</h2>
       <div className="bg-slate-800 p-10 rounded-[3.5rem] border-2 border-slate-700 shadow-2xl relative">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-900 px-6 py-2 rounded-full border border-slate-700 text-[10px] font-black uppercase text-slate-400 tracking-widest">A Mensagem</div>
         <p className="italic text-2xl font-serif text-slate-100 leading-relaxed">"{message.text}"</p>
       </div>
-      <div className="bg-cyan-900/40 border-2 border-cyan-500/50 p-10 rounded-[3.5rem] space-y-6">
-        <p className="text-sm font-bold italic leading-relaxed text-cyan-100 uppercase tracking-tighter">Pague o pedágio: passe a corrente adiante para descobrir quem é!</p>
-        <Button onClick={handlePaywall} icon={copied ? Unlock : Copy} variant={copied ? 'success' : 'primary'}>
-           {copied ? 'Desbloqueando...' : 'Copiar Meu Link e Revelar'}
-        </Button>
+      
+      <div className="bg-cyan-900/40 border-2 border-cyan-500/50 p-8 rounded-[3.5rem] space-y-6">
+        <div className="flex items-center justify-center gap-2 text-yellow-500 font-black text-lg">
+           <Coins size={24}/> {tokens} Moedas
+        </div>
+
+        {tokens >= 1 ? (
+          <>
+            <p className="text-sm font-bold italic leading-relaxed text-cyan-100">Você tem saldo! Clique no botão abaixo para gastar 1 Moeda e revelar a identidade.</p>
+            <Button onClick={handleUnlock} loading={isProcessing} icon={Unlock} variant="success">
+               Gastar 1 🪙 para Revelar
+            </Button>
+          </>
+        ) : (
+          <>
+            <p className="text-sm font-bold italic leading-relaxed text-cyan-100 uppercase tracking-tighter">Acabaram suas moedas!</p>
+            <p className="text-xs text-slate-400 font-medium">Poste o seu link! Sempre que alguém te enviar um segredo e criar um link através de você, <span className="text-yellow-500 font-bold">você ganha +1 Moeda!</span></p>
+            <Button onClick={handleCopyLink} icon={copied ? CheckCircle2 : Copy} variant={copied ? 'success' : 'warning'}>
+               {copied ? 'Link Copiado!' : 'Copiar Link para Divulgar'}
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -575,9 +648,11 @@ const RevealScreen = ({ message, onBack }) => {
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const [screen, setScreen] = useState(1);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [targetUid, setTargetUid] = useState(null); 
+  const [referrerUid, setReferrerUid] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null); 
   const [toast, setToast] = useState(null);
   const [toastType, setToastType] = useState('error');
@@ -590,19 +665,47 @@ export default function App() {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        await signInAnonymously(auth);
-      } catch (err) { console.error(err); } finally { setLoadingAuth(false); }
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          try {
+            await signInWithCustomToken(auth, __initial_auth_token);
+          } catch (tokenErr) {
+            await signInAnonymously(auth);
+          }
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) { 
+        console.error("Erro crítico na autenticação:", err); 
+      } finally { 
+        setLoadingAuth(false); 
+      }
     };
     initAuth();
     return onAuthStateChanged(auth, setUser);
   }, []);
 
+  // Monitora o perfil do usuário em tempo real (para atualizar saldo de moedas)
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid), (d) => {
+      if(d.exists()) setUserProfile(d.data());
+    }, (error) => {
+      console.error("Erro no onSnapshot do perfil:", error);
+    });
+    return () => unsub();
+  }, [user]);
+
   useEffect(() => {
     if (!loadingAuth && user) {
       const u = new URLSearchParams(window.location.search).get('u');
       if (u) {
-        if (u === user.uid) setScreen(4);
-        else { setTargetUid(u); setScreen(3); }
+        if (u === user.uid) {
+          setScreen(4);
+        } else { 
+          setTargetUid(u); 
+          setReferrerUid(u); // Guarda quem indicou
+          setScreen(3); 
+        }
       }
     }
   }, [loadingAuth, user]);
@@ -617,11 +720,11 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-100 flex justify-center font-sans antialiased overflow-y-auto">
       <div className="w-full max-w-md bg-white min-h-screen shadow-2xl relative flex flex-col">
-        {screen === 1 && <CreateLinkScreen user={user} onNext={setScreen} setToast={showToast} />}
+        {screen === 1 && <CreateLinkScreen user={user} referrerUid={referrerUid} onNext={setScreen} setToast={showToast} />}
         {screen === 2 && <LinkReadyScreen user={user} onNext={setScreen} />}
         {screen === 3 && targetUid && <SendSecretScreen targetUid={targetUid} user={user} onReset={() => setScreen(1)} setToast={showToast} />}
-        {screen === 4 && <InboxScreen user={user} onBack={() => setScreen(1)} onSelectMessage={msg => { setSelectedMessage(msg); setScreen(5); }} setToast={showToast} />}
-        {screen === 5 && selectedMessage && <ViralPaywallScreen user={user} message={selectedMessage} onBack={() => setScreen(4)} onUnlock={() => setScreen(6)} />}
+        {screen === 4 && <InboxScreen user={user} userProfile={userProfile} onBack={() => setScreen(1)} onSelectMessage={msg => { setSelectedMessage(msg); setScreen(5); }} setToast={showToast} />}
+        {screen === 5 && selectedMessage && <ViralPaywallScreen user={user} userProfile={userProfile} message={selectedMessage} onBack={() => setScreen(4)} onUnlock={() => setScreen(6)} setToast={showToast} />}
         {screen === 6 && selectedMessage && <RevealScreen message={selectedMessage} onBack={() => setScreen(4)} />}
       </div>
       <Toast message={toast} type={toastType} onClose={() => setToast(null)} />

@@ -33,20 +33,22 @@ import {
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO FIREBASE E URL ---
-const firebaseConfig = {
-  apiKey: "AIzaSyCxDn2wieUqdUFtFUDVJyIlWVN2Kg8WdQ0",
-  authDomain: "offinn-89849.firebaseapp.com",
-  projectId: "offinn-89849",
-  storageBucket: "offinn-89849.firebasestorage.app",
-  messagingSenderId: "580679008063",
-  appId: "1:580679008063:web:9fce23acaafd6699c4dd8a"
-};
+const firebaseConfig = typeof __firebase_config !== 'undefined' 
+  ? JSON.parse(__firebase_config) 
+  : {
+      apiKey: "AIzaSyCxDn2wieUqdUFtFUDVJyIlWVN2Kg8WdQ0",
+      authDomain: "offinn-89849.firebaseapp.com",
+      projectId: "offinn-89849",
+      storageBucket: "offinn-89849.firebasestorage.app",
+      messagingSenderId: "580679008063",
+      appId: "1:580679008063:web:9fce23acaafd6699c4dd8a"
+    };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const appId = "offinn-89849"; 
+const appId = typeof __app_id !== 'undefined' ? __app_id : "offinn-89849"; 
 // Definimos o APP_URL apontando para o arquivo onde o React está injetado
 const BASE_URL = "https://of-fin.vercel.app";
 const APP_URL = `${BASE_URL}/app.html`;
@@ -407,11 +409,21 @@ export default function App() {
     const initAuth = async () => {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
+          try {
+            await signInWithCustomToken(auth, __initial_auth_token);
+          } catch (tokenErr) {
+            // Se o token personalizado falhar (ex: expiração ou mismatch), 
+            // tentamos o login anónimo para manter a app funcional.
+            await signInAnonymously(auth);
+          }
         } else {
           await signInAnonymously(auth);
         }
-      } catch (err) { console.error(err); } finally { setLoadingAuth(false); }
+      } catch (err) { 
+        console.error("Erro crítico na autenticação:", err); 
+      } finally { 
+        setLoadingAuth(false); 
+      }
     };
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, setUser);

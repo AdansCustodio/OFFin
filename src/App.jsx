@@ -6,6 +6,7 @@ import {
   signInWithCustomToken, 
   onAuthStateChanged,
   GoogleAuthProvider,
+  signInWithPopup,
   linkWithPopup
 } from 'firebase/auth';
 import { 
@@ -33,7 +34,11 @@ import {
   XCircle
 } from 'lucide-react';
 
-// --- CONFIGURAÇÃO FIREBASE E URL ---
+/**
+ * PROJETO OFFIN - VERSÃO DE PRODUÇÃO CORRIGIDA
+ * Foco: Persistência de UID e Robustez de Login Google
+ */
+
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
   ? JSON.parse(__firebase_config) 
   : {
@@ -75,13 +80,13 @@ const copyToClipboardFallback = (text) => {
 const Toast = ({ message, type = 'error', onClose }) => {
   if (!message) return null;
   return (
-    <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 duration-300">
+    <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 duration-300 w-[90%] max-w-xs">
       <div className={`px-6 py-4 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-3 border ${
-        type === 'error' ? 'bg-red-500/90 border-red-400 text-white' : 'bg-cyan-500/90 border-cyan-400 text-white'
+        type === 'error' ? 'bg-red-500/95 border-red-400 text-white' : 'bg-cyan-500/95 border-cyan-400 text-white'
       }`}>
-        {type === 'error' ? <XCircle size={20} /> : <CheckCircle2 size={20} />}
-        <p className="text-sm font-bold">{message}</p>
-        <button onClick={onClose} className="ml-2 opacity-50 hover:opacity-100"><XCircle size={16} /></button>
+        {type === 'error' ? <XCircle size={20} className="shrink-0" /> : <CheckCircle2 size={20} className="shrink-0" />}
+        <p className="text-xs font-bold leading-tight">{message}</p>
+        <button onClick={onClose} className="ml-auto opacity-50 hover:opacity-100"><XCircle size={16} /></button>
       </div>
     </div>
   );
@@ -147,7 +152,7 @@ const CreateLinkScreen = ({ user, onNext, setToast }) => {
       onNext(2); 
     } catch (err) { 
       console.error(err);
-      setToast("Erro ao criar perfil. Tente novamente.");
+      setToast("Erro ao salvar perfil. Verifique sua conexão.");
     } finally { setLoading(false); }
   };
 
@@ -167,7 +172,7 @@ const CreateLinkScreen = ({ user, onNext, setToast }) => {
               <span className="absolute left-4 top-4 text-slate-400 font-bold">@</span>
               <input type="text" placeholder="seu_instagram" value={handle} onChange={(e) => setHandle(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700 rounded-2xl py-4 pl-10 pr-4 text-white font-bold focus:outline-none focus:ring-2 focus:ring-cyan-500/50 backdrop-blur-md placeholder:text-slate-500" />
             </div>
-            <Button onClick={handleCreateProfile} loading={loading} disabled={!handle}>Criar meu link</Button>
+            <Button onClick={handleCreateProfile} loading={loading} disabled={!handle || !user}>Criar meu link</Button>
             <Button onClick={() => onNext(4)} variant="ghost" className="!text-cyan-100 opacity-80">Já tenho link (Ver Caixa)</Button>
           </div>
         </main>
@@ -178,9 +183,16 @@ const CreateLinkScreen = ({ user, onNext, setToast }) => {
 
 const LinkReadyScreen = ({ user, onNext }) => {
   const [copied, setCopied] = useState(false);
-  const shareLink = `${APP_URL}?u=${user?.uid}`;
+  const [shareLink, setShareLink] = useState('');
+
+  useEffect(() => {
+    if (user?.uid) {
+      setShareLink(`${APP_URL}?u=${user.uid}`);
+    }
+  }, [user]);
 
   const handleCopy = () => {
+    if (!shareLink) return;
     copyToClipboardFallback(shareLink);
     setCopied(true);
     setTimeout(() => onNext(4), 2000); 
@@ -219,8 +231,8 @@ const LinkReadyScreen = ({ user, onNext }) => {
               <span className="bg-cyan-500 text-white w-6 h-6 rounded-full flex items-center justify-center font-black text-xs shadow-[0_0_10px_rgba(6,182,212,0.5)]">2</span>
               <p className="text-white font-bold text-sm">Copie seu link para colar no adesivo</p>
             </div>
-            <Button onClick={handleCopy} icon={copied ? CheckCircle2 : Copy} variant={copied ? 'success' : 'primary'} className="py-4 shadow-[0_0_20px_rgba(6,182,212,0.2)]">
-              {copied ? 'Copiado!' : 'Copiar Link e Continuar'}
+            <Button onClick={handleCopy} icon={copied ? CheckCircle2 : Copy} variant={copied ? 'success' : 'primary'} className="py-4 shadow-[0_0_20px_rgba(6,182,212,0.2)]" disabled={!shareLink}>
+              {copied ? 'Copiado!' : shareLink ? 'Copiar Link e Continuar' : 'Gerando link...'}
             </Button>
           </div>
         </div>
@@ -241,7 +253,7 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) setTargetHandle(docSnap.data().handle);
     };
-    fetchTarget();
+    if (targetUid) fetchTarget();
   }, [targetUid]);
 
   const sendToDB = async (currentUser) => {
@@ -265,15 +277,19 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
       try {
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
-        const result = await linkWithPopup(user, provider);
-        await sendToDB(result.user);
+        // Se linkWithPopup falhar, tentamos signInWithPopup direto
+        try {
+          const result = await linkWithPopup(user, provider);
+          await sendToDB(result.user);
+        } catch (linkErr) {
+          console.error("Erro no linkWithPopup, tentando signInWithPopup:", linkErr);
+          const result = await signInWithPopup(auth, provider);
+          await sendToDB(result.user);
+        }
       } catch (error) { 
         setLoading(false); 
-        if (error.code === 'auth/popup-blocked') {
-          setToast("O navegador bloqueou a janela. Ative os popups.");
-        } else {
-          setToast("Autenticação com Google falhou.");
-        }
+        console.error("Erro Google Auth:", error);
+        setToast(`Falha no Google: ${error.code || 'Erro desconhecido'}`);
       }
     } else { await sendToDB(user); }
   };
@@ -316,23 +332,29 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
       const myMsgs = allMsgs.filter(m => m.targetUid === user.uid).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       setMessages(myMsgs);
       setLoading(false);
-    }, (error) => { setLoading(false); });
+    }, (error) => { 
+      console.error("Erro Firestore:", error);
+      setLoading(false); 
+    });
     return () => unsubscribe();
   }, [user]);
 
   const handleLinkGoogle = async () => {
+    if (!user) return;
     setLinking(true);
     try { 
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      await linkWithPopup(user, provider); 
-    } catch (e) { 
-      console.error(e); 
-      if (e.code === 'auth/popup-blocked') {
-        setToast("O navegador bloqueou a janela. Ative os popups.");
-      } else {
-        setToast("Não foi possível conectar ao Google.");
+      try {
+        await linkWithPopup(user, provider);
+      } catch (linkErr) {
+        console.warn("Link falhou, tentando login direto:", linkErr);
+        await signInWithPopup(auth, provider);
       }
+      setToast("Conta salva com sucesso!", "success");
+    } catch (e) { 
+      console.error("Erro Google Login:", e); 
+      setToast(`Erro ao salvar: ${e.code || 'Verifique as permissões'}`);
     } finally { setLinking(false); }
   };
 
@@ -347,9 +369,9 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
         {user?.isAnonymous && (
           <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-3xl flex items-center justify-between gap-4">
             <div className="flex-1">
-              <p className="text-xs font-bold text-yellow-800">Salve sua conta para não perder o acesso!</p>
+              <p className="text-xs font-bold text-yellow-800 leading-tight">Sua conta é temporária. Salve agora para não perder seus segredos!</p>
             </div>
-            <button onClick={handleLinkGoogle} disabled={linking} className="bg-white px-3 py-2 rounded-xl text-xs font-bold text-slate-800 shadow-sm border border-slate-200 shrink-0">
+            <button onClick={handleLinkGoogle} disabled={linking} className="bg-white px-3 py-2 rounded-xl text-xs font-bold text-slate-800 shadow-sm border border-slate-200 shrink-0 active:scale-95 transition-all">
               {linking ? 'Salvando...' : 'Salvar com Google'}
             </button>
           </div>
@@ -375,6 +397,7 @@ const ViralPaywallScreen = ({ user, message, onUnlock, onBack }) => {
   useEffect(() => { if (message.isRevealed) onUnlock(); }, [message]);
 
   const handlePaywall = async () => {
+    if (!user) return;
     const shareLink = `${APP_URL}?u=${user.uid}`;
     copyToClipboardFallback(shareLink);
     setCopied(true);
@@ -442,6 +465,12 @@ export default function App() {
   const [targetUid, setTargetUid] = useState(null); 
   const [selectedMessage, setSelectedMessage] = useState(null); 
   const [toast, setToast] = useState(null);
+  const [toastType, setToastType] = useState('error');
+
+  const showToast = (msg, type = 'error') => {
+    setToast(msg);
+    setToastType(type);
+  };
 
   useEffect(() => {
     const initAuth = async () => {
@@ -462,7 +491,9 @@ export default function App() {
       }
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+    });
     return () => unsubscribe();
   }, []);
 
@@ -470,8 +501,12 @@ export default function App() {
     if (!loadingAuth && user) {
       const u = new URLSearchParams(window.location.search).get('u');
       if (u) {
-        if (u === user.uid) setScreen(4);
-        else { setTargetUid(u); setScreen(3); }
+        if (u === user.uid) {
+          setScreen(4);
+        } else {
+          setTargetUid(u);
+          setScreen(3); 
+        }
       }
     }
   }, [loadingAuth, user]);
@@ -486,14 +521,14 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-100 flex justify-center font-sans antialiased">
       <div className="w-full max-w-md bg-white min-h-screen shadow-2xl relative overflow-hidden flex flex-col">
-        {screen === 1 && <CreateLinkScreen user={user} onNext={setScreen} setToast={setToast} />}
+        {screen === 1 && <CreateLinkScreen user={user} onNext={setScreen} setToast={showToast} />}
         {screen === 2 && <LinkReadyScreen user={user} onNext={setScreen} />}
-        {screen === 3 && targetUid && <SendSecretScreen targetUid={targetUid} user={user} onReset={() => setScreen(1)} setToast={setToast} />}
-        {screen === 4 && <InboxScreen user={user} onBack={() => setScreen(1)} onSelectMessage={msg => { setSelectedMessage(msg); setScreen(5); }} setToast={setToast} />}
+        {screen === 3 && targetUid && <SendSecretScreen targetUid={targetUid} user={user} onReset={() => setScreen(1)} setToast={showToast} />}
+        {screen === 4 && <InboxScreen user={user} onBack={() => setScreen(1)} onSelectMessage={msg => { setSelectedMessage(msg); setScreen(5); }} setToast={showToast} />}
         {screen === 5 && selectedMessage && <ViralPaywallScreen user={user} message={selectedMessage} onBack={() => setScreen(4)} onUnlock={() => setScreen(6)} />}
         {screen === 6 && selectedMessage && <RevealScreen message={selectedMessage} onBack={() => setScreen(4)} />}
       </div>
-      <Toast message={toast} onClose={() => setToast(null)} />
+      <Toast message={toast} type={toastType} onClose={() => setToast(null)} />
     </div>
   );
 }

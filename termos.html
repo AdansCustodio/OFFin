@@ -1,1 +1,86 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Termos de Uso - OFFin</title>
+    
+    <!-- Tailwind CSS com plugin de tipografia -->
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
 
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap');
+
+        body {
+            background-color: #18181b;
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .bg-brushed-steel {
+            background-image: 
+                repeating-linear-gradient(105deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 4px),
+                repeating-linear-gradient(105deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.1) 2px, transparent 2px, transparent 6px);
+            mix-blend-mode: overlay;
+        }
+    </style>
+</head>
+<body class="relative min-h-screen antialiased selection:bg-cyan-500 selection:text-white">
+
+    <!-- Fundo Estilizado -->
+    <div class="fixed inset-0 pointer-events-none z-[-2]">
+        <div class="absolute inset-0 bg-[#18181b]"></div>
+        <div class="absolute top-[-20%] left-[-10%] w-[60vw] h-[60vw] bg-pink-600/10 blur-[120px] rounded-full mix-blend-screen"></div>
+        <div class="absolute inset-0 bg-brushed-steel opacity-60"></div>
+    </div>
+
+    <!-- Navegação -->
+    <nav class="relative z-50 w-full px-6 py-6 flex items-center justify-between max-w-4xl mx-auto border-b border-white/5">
+        <a href="index.html" class="text-2xl font-black italic tracking-tighter text-white">
+            OFF<span class="text-cyan-500">in</span>
+        </a>
+        <a href="index.html" class="text-sm font-bold text-slate-400 hover:text-white flex items-center gap-2 transition-colors">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i> Voltar
+        </a>
+    </nav>
+
+    <!-- Conteúdo Principal -->
+    <main class="relative z-10 max-w-3xl mx-auto py-16 px-6">
+        <article class="prose prose-invert prose-cyan lg:prose-lg max-w-none">
+            <h1 class="text-4xl font-extrabold text-white mb-2 tracking-tight">Termos de Uso</h1>
+            <p class="text-xs text-slate-500 font-bold uppercase tracking-widest mt-0 mb-12">Actualizado em: 15 de Abril de 2026</p>
+
+            <h3>1. Aceitação dos Termos</h3>
+            <p>Ao aceder e utilizar o **OFFin Network**, concorda em cumprir estes Termos de Uso. O nosso serviço permite o envio de mensagens sob pseudónimo e anonimato condicional, focado na interacção social e entretenimento.</p>
+
+            <h3>2. Responsabilidade do Utilizador</h3>
+            <p>Concorda que é o único responsável por qualquer conteúdo enviado através do seu link ou conta. É estritamente proibido utilizar o OFFin para:</p>
+            <ul>
+                <li>Praticar cyberbullying, assédio ou ameaças.</li>
+                <li>Disseminar discurso de ódio ou preconceito.</li>
+                <li>Partilhar dados privados de terceiros sem autorização.</li>
+            </ul>
+
+            <h3>3. Mecânica de Revelação</h3>
+            <p>Compreende que o sistema de anonimato do OFFin é condicional. A identidade do remetente pode ser revelada ao destinatário caso este cumpra as metas de "pedágio viral" (partilha de links) estabelecidas pela plataforma.</p>
+
+            <h3>4. Limitação de Responsabilidade</h3>
+            <p>O OFFin actua apenas como um intermediário tecnológico de mensagens. Nos termos do Marco Civil da Internet, a plataforma não se responsabiliza pelo conteúdo gerado por terceiros, reservando-se o direito de remover conteúdos que violem as nossas regras.</p>
+
+            <h3>5. Modificações</h3>
+            <p>Reservamo-nos o direito de alterar estes termos a qualquer momento, visando a melhoria da segurança e experiência da comunidade.</p>
+        </article>
+    </main>
+
+    <footer class="text-center py-12 border-t border-white/5 text-slate-600 text-[10px] uppercase tracking-[0.2em] font-bold">
+        &copy; 2026 OFFin Network
+    </footer>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

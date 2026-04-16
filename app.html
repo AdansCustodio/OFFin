@@ -1,9 +1,29 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App.jsx'
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Meta tag essencial para o app ficar responsivo no celular -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>OFFin - App</title>
+    
+    <!-- Importação do Tailwind CSS via CDN para garantir o estilo visual futurista -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+      /* Garantir que o fundo seja escuro enquanto o app carrega */
+      body {
+        background-color: #18181b;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Aqui é onde o React vai desenhar as telas do aplicativo -->
+    <div id="root"></div>
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)
+    <!-- Link para o arquivo principal de inicialização dentro da pasta src -->
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

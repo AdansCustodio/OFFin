@@ -41,12 +41,15 @@ import {
   User,
   Eye,
   Coins,
-  Ticket
+  Ticket,
+  Store,
+  CalendarHeart,
+  CreditCard
 } from 'lucide-react';
 
 /**
- * PROJETO OFFIN - VERSÃO DE PRODUÇÃO V11 (SECURITY & UI FIX)
- * Foco: Split de Identidade (Anti-Scraping) e Resgate do Design System Dark/Neon
+ * PROJETO OFFIN - VERSÃO DE PRODUÇÃO V12 (STORE & ESCAPE VALVE)
+ * Foco: Bônus Diário (Retenção) e Loja de Pacotes (Monetização)
  */
 
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
@@ -198,6 +201,7 @@ const Button = ({ children, onClick, variant = 'primary', icon: Icon, disabled, 
     ghost: 'bg-transparent text-slate-400 font-medium text-sm hover:text-white',
     success: 'bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:bg-emerald-400 border border-emerald-400/50',
     warning: 'bg-yellow-500 text-yellow-950 shadow-[0_0_15px_rgba(234,179,8,0.3)] hover:bg-yellow-400 border border-yellow-400/50',
+    danger: 'bg-pink-600 text-white shadow-[0_0_15px_rgba(219,39,119,0.3)] hover:bg-pink-500 border border-pink-400/50',
   };
   return (
     <button onClick={onClick} disabled={disabled || loading} className={`${base} ${variants[variant]} ${className}`}>
@@ -211,7 +215,137 @@ const Button = ({ children, onClick, variant = 'primary', icon: Icon, disabled, 
   );
 };
 
-// --- TELAS ---
+// --- COMPONENTE DA LOJA (STORE MODAL) ---
+const StoreModal = ({ isOpen, onClose, user, userProfile, setToast }) => {
+  const [loadingDaily, setLoadingDaily] = useState(false);
+  
+  if (!isOpen) return null;
+
+  const todayStr = new Date().toISOString().split('T')[0]; // Data atual (YYYY-MM-DD)
+  const lastClaimedStr = userProfile?.lastDailyCoinDate;
+  const canClaimDaily = lastClaimedStr !== todayStr; // Se for diferente de hoje, pode resgatar
+
+  const handleClaimDaily = async () => {
+    if (!canClaimDaily || !user) return;
+    setLoadingDaily(true);
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid), {
+        tokens: (userProfile?.tokens || 0) + 1,
+        lastDailyCoinDate: todayStr
+      });
+      setToast("1 Moeda resgatada com sucesso! Volte amanhã.", "success");
+    } catch (err) {
+      setToast("Erro ao resgatar moeda diária.");
+    } finally {
+      setLoadingDaily(false);
+    }
+  };
+
+  const handleMockPurchase = (amount) => {
+    setToast(`Simulação: Você receberia ${amount} moedas! Integração PIX/Cartão em breve na v2.0.`, "success");
+  };
+
+  return (
+    <div className="absolute inset-0 z-50 flex flex-col justify-end">
+      {/* Backdrop (Fecha ao clicar fora) */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in" onClick={onClose}></div>
+      
+      {/* Painel da Loja */}
+      <div className="relative bg-[#18181b] border-t border-white/10 rounded-t-[2.5rem] p-8 space-y-8 animate-in slide-in-from-bottom-full shadow-[0_-20px_50px_rgba(0,0,0,0.5)]">
+        
+        {/* Cabeçalho da Loja */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/30 text-yellow-500">
+              <Store size={24} />
+            </div>
+            <div>
+              <h3 className="text-2xl font-black italic uppercase text-white tracking-tighter">Sua Carteira</h3>
+              <p className="text-xs font-bold text-yellow-500 uppercase tracking-widest flex items-center gap-1">
+                Saldo: {userProfile?.tokens || 0} <Coins size={12}/>
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 bg-white/5 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-all">
+            <XCircle size={24} />
+          </button>
+        </div>
+
+        <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+
+        {/* 1. Válvula de Escape Gratuita (Bônus Diário) */}
+        <div className="bg-gradient-to-br from-[#09090b] to-cyan-900/20 border border-cyan-500/20 p-6 rounded-3xl space-y-4">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1">
+              <h4 className="text-white font-black italic uppercase tracking-tighter flex items-center gap-2">
+                <CalendarHeart size={18} className="text-cyan-400" /> Bônus Diário
+              </h4>
+              <p className="text-xs text-slate-400 leading-relaxed font-medium">Volte todos os dias para resgatar 1 Moeda gratuitamente e revelar um segredo.</p>
+            </div>
+          </div>
+          <Button 
+            onClick={handleClaimDaily} 
+            loading={loadingDaily} 
+            disabled={!canClaimDaily} 
+            variant={canClaimDaily ? 'primary' : 'secondary'}
+            icon={Coins}
+          >
+            {canClaimDaily ? 'Resgatar 1 Moeda Grátis' : 'Já resgatado hoje'}
+          </Button>
+          {!canClaimDaily && <p className="text-[10px] text-center text-slate-500 font-bold uppercase tracking-widest">Volte amanhã para mais!</p>}
+        </div>
+
+        {/* 2. Aquisição Rápida (Monetização Real) */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <CreditCard size={18} className="text-slate-400"/>
+            <h4 className="text-slate-300 font-bold uppercase tracking-widest text-xs">Tem pressa? Compre Moedas</h4>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            {/* Pacote 1 */}
+            <button onClick={() => handleMockPurchase(1)} className="bg-[#09090b] border border-white/5 hover:border-yellow-500/50 py-4 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 group">
+              <div className="text-yellow-600 group-hover:scale-110 transition-transform">
+                <Coins size={24}/>
+              </div>
+              <div className="text-center mt-2">
+                <span className="block font-black text-white italic tracking-tighter text-sm sm:text-base">1 Moeda</span>
+                <span className="text-[10px] text-slate-400 font-bold">R$ 0,99</span>
+              </div>
+            </button>
+
+            {/* Pacote 5 */}
+            <button onClick={() => handleMockPurchase(5)} className="bg-[#09090b] border border-white/5 hover:border-yellow-500/50 py-4 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 group">
+              <div className="text-yellow-500 group-hover:scale-110 transition-transform flex">
+                <Coins size={24}/><Coins size={24} className="-ml-3 opacity-80"/>
+              </div>
+              <div className="text-center mt-2">
+                <span className="block font-black text-white italic tracking-tighter text-sm sm:text-base">5 Moedas</span>
+                <span className="text-[10px] text-slate-400 font-bold">R$ 3,99</span>
+              </div>
+            </button>
+
+            {/* Pacote 10 (Popular/Vantajoso) */}
+            <button onClick={() => handleMockPurchase(10)} className="bg-gradient-to-b from-yellow-500/20 to-[#09090b] border border-yellow-500/50 hover:border-yellow-400 py-4 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 relative overflow-hidden group shadow-[0_0_15px_rgba(234,179,8,0.15)]">
+              <div className="absolute top-0 inset-x-0 bg-yellow-500 text-yellow-950 text-[8px] font-black uppercase py-0.5 text-center">Melhor Valor</div>
+              <div className="text-yellow-400 group-hover:scale-110 transition-transform flex mt-2">
+                <Coins size={26}/><Coins size={26} className="-ml-3"/>
+              </div>
+              <div className="text-center mt-1">
+                <span className="block font-black text-yellow-400 italic tracking-tighter text-base sm:text-lg drop-shadow-[0_0_10px_rgba(234,179,8,0.5)]">10 Moedas</span>
+                <span className="text-[11px] text-yellow-500 font-black">R$ 5,99</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+};
+
+
+// --- TELAS DO APP ---
 
 const CreateLinkScreen = ({ user, referrerUid, onNext, setToast }) => {
   const [handle, setHandle] = useState('@');
@@ -369,18 +503,16 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
       const msgId = crypto.randomUUID();
       
       try {
-        // PASSO 1 DA SEGURANÇA: Salva apenas o texto e o estado (visível no frontend)
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', msgId), {
           id: msgId, 
           targetUid, 
-          senderUid: currentUser.uid, // Usado apenas para listar na aba de enviados do próprio usuário
+          senderUid: currentUser.uid, 
           text: message.trim(), 
           createdAt: new Date().toISOString(), 
           isRevealed: false, 
           status: 'sent'
         });
 
-        // PASSO 2 DA SEGURANÇA: Salva a identidade em uma coleção separada (invisível no Radar inicial)
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'identities', msgId), {
           senderName: finalName,
           senderPhoto: currentUser.photoURL || ''
@@ -446,7 +578,7 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
   );
 };
 
-const InboxScreen = ({ user, userProfile, onSelectMessage, onBack, setToast }) => {
+const InboxScreen = ({ user, userProfile, onSelectMessage, onBack, setToast, onOpenStore }) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('received');
@@ -480,10 +612,10 @@ const InboxScreen = ({ user, userProfile, onSelectMessage, onBack, setToast }) =
       <header className="px-6 py-5 bg-[#09090b]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between sticky top-0 z-20">
         <button onClick={onBack} className="text-slate-400 p-2 hover:text-white transition-colors"><ChevronLeft /></button>
         <div className="text-center">
-           <h1 className="font-black text-white text-lg italic tracking-tighter uppercase drop-shadow-md">OFF<span className="text-cyan-500">IN</span> RADAR</h1>
-           <div className="flex items-center justify-center gap-1 text-yellow-500 font-bold text-[10px] mt-0.5">
-             <Coins size={12}/> {userProfile?.tokens || 0} Moedas
-           </div>
+           <h1 className="font-black text-white text-lg italic tracking-tighter uppercase drop-shadow-md">OFF<span className="text-cyan-500">IN</span></h1>
+           <button onClick={onOpenStore} className="flex items-center justify-center gap-1 text-yellow-500 hover:text-yellow-400 font-bold text-[10px] mt-0.5 transition-colors bg-yellow-500/10 px-2 py-0.5 rounded-full border border-yellow-500/20 mx-auto">
+             <Coins size={12}/> {userProfile?.tokens || 0} Moedas <span className="ml-1 opacity-70">+</span>
+           </button>
         </div>
         <div className="flex items-center gap-3">
           {user?.isAnonymous ? (
@@ -547,16 +679,14 @@ const InboxScreen = ({ user, userProfile, onSelectMessage, onBack, setToast }) =
   );
 };
 
-const ViralPaywallScreen = ({ user, userProfile, message, onUnlock, setToast }) => {
+const ViralPaywallScreen = ({ user, userProfile, message, onUnlock, setToast, onOpenStore }) => {
   const [copied, setCopied] = useState(false);
   const tokens = userProfile?.tokens || 0;
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // EFEITO DE SEGURANÇA: Checa se a mensagem já foi revelada antes
   useEffect(() => { 
     const checkStatus = async () => {
       if (message.isRevealed && !message.senderName) {
-        // Se a flag está true mas a identidade não desceu ainda, busca no cofre
         setIsProcessing(true);
         const idSnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'identities', message.id));
         setIsProcessing(false);
@@ -572,21 +702,18 @@ const ViralPaywallScreen = ({ user, userProfile, message, onUnlock, setToast }) 
 
   const handleUnlock = async () => {
     if (tokens < 1) {
-       setToast("Você não tem moedas! Compartilhe seu link para ganhar.");
+       onOpenStore();
        return;
     }
     setIsProcessing(true);
     try {
-      // 1. Debita a moeda no perfil
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid), {
         tokens: tokens - 1
       });
-      // 2. Libera a visualização pública no radar
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', message.id), { 
         isRevealed: true, status: 'revealed' 
       });
       
-      // 3. BUSCA SEGURA DA IDENTIDADE: Só agora o app faz o download do nome/foto
       const idSnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'identities', message.id));
       const msgWithIdentity = idSnap.exists() ? { ...message, ...idSnap.data() } : message;
 
@@ -614,23 +741,29 @@ const ViralPaywallScreen = ({ user, userProfile, message, onUnlock, setToast }) 
         <p className="italic text-xl font-serif text-slate-200 leading-relaxed">"{message.text}"</p>
       </div>
       
-      <div className="bg-cyan-500/5 border border-cyan-500/20 p-8 rounded-3xl space-y-6">
-        <div className="flex items-center justify-center gap-2 text-yellow-500 font-black text-lg">
-           <Coins size={22}/> {tokens} Moedas
-        </div>
+      <div className="bg-cyan-500/5 border border-cyan-500/20 p-8 rounded-3xl space-y-6 relative overflow-hidden">
+        {/* Glow Background if tokens >= 1 */}
+        {tokens >= 1 && <div className="absolute inset-0 bg-cyan-500/10 blur-2xl z-0 pointer-events-none"></div>}
+
+        <button onClick={onOpenStore} className="flex items-center justify-center gap-2 text-yellow-500 hover:text-yellow-400 transition-colors font-black text-lg mx-auto relative z-10 bg-[#09090b] px-4 py-2 rounded-xl border border-yellow-500/20">
+           <Coins size={22}/> {tokens} Moedas <span className="text-xs ml-1 bg-yellow-500 text-yellow-950 px-1.5 rounded-md">+</span >
+        </button>
 
         {tokens >= 1 ? (
-          <>
-            <p className="text-sm font-medium italic leading-relaxed text-cyan-100/80">Você tem saldo! Clique no botão abaixo para gastar 1 Moeda e abrir o cofre de identidade.</p>
+          <div className="space-y-5 relative z-10">
+            <p className="text-sm font-medium italic leading-relaxed text-cyan-100/80">Você tem saldo! Gaste 1 Moeda agora para abrir o cofre de identidade.</p>
             <Button onClick={handleUnlock} loading={isProcessing} icon={Unlock} variant="success">
                Gastar 1 🪙 para Revelar
             </Button>
-          </>
+          </div>
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-5 relative z-10">
             <p className="text-sm font-black italic leading-tight text-pink-400 uppercase tracking-tighter">Acabaram suas moedas!</p>
-            <p className="text-xs text-slate-400 font-medium leading-relaxed bg-[#09090b] p-4 rounded-xl border border-white/5">Poste o seu link! Sempre que alguém te enviar um segredo e criar um link através de você, <span className="text-yellow-500 font-bold">você ganha +1 Moeda!</span></p>
-            <Button onClick={handleCopyLink} icon={copied ? CheckCircle2 : Copy} variant={copied ? 'success' : 'warning'}>
+            <Button onClick={onOpenStore} icon={Store} variant="primary">
+               Obter mais Moedas
+            </Button>
+            <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-4">Ou copie seu link grátis. Quando alguém enviar um segredo através dele, você ganha +1 Moeda!</p>
+            <Button onClick={handleCopyLink} icon={copied ? CheckCircle2 : Copy} variant={copied ? 'success' : 'secondary'} className="!py-3 !text-sm">
                {copied ? 'Link Copiado!' : 'Copiar Link para Divulgar'}
             </Button>
           </div>
@@ -686,8 +819,11 @@ export default function App() {
   const [targetUid, setTargetUid] = useState(null); 
   const [referrerUid, setReferrerUid] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null); 
+  
+  // Controle de Interface
   const [toast, setToast] = useState(null);
   const [toastType, setToastType] = useState('error');
+  const [isStoreOpen, setIsStoreOpen] = useState(false);
 
   const showToast = (msg, type = 'error') => {
     setToast(msg);
@@ -716,7 +852,7 @@ export default function App() {
     return onAuthStateChanged(auth, setUser);
   }, []);
 
-  // Monitora o perfil do usuário em tempo real (para atualizar saldo de moedas)
+  // Monitora o perfil do usuário em tempo real
   useEffect(() => {
     if (!user) return;
     const unsub = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid), (d) => {
@@ -735,7 +871,7 @@ export default function App() {
           setScreen(4);
         } else { 
           setTargetUid(u); 
-          setReferrerUid(u); // Guarda quem indicou
+          setReferrerUid(u);
           setScreen(3); 
         }
       }
@@ -758,14 +894,18 @@ export default function App() {
          <div className="absolute inset-0 opacity-40 mix-blend-overlay" style={{ backgroundImage: `repeating-linear-gradient(105deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 4px)` }}></div>
       </div>
 
-      <div className="w-full max-w-md bg-[#18181b] min-h-screen shadow-2xl relative flex flex-col z-10 border-x border-white/5">
+      <div className="w-full max-w-md bg-[#18181b] min-h-screen shadow-2xl relative flex flex-col z-10 border-x border-white/5 overflow-hidden">
         {screen === 1 && <CreateLinkScreen user={user} referrerUid={referrerUid} onNext={setScreen} setToast={showToast} />}
         {screen === 2 && <LinkReadyScreen user={user} onNext={setScreen} />}
         {screen === 3 && targetUid && <SendSecretScreen targetUid={targetUid} user={user} onReset={() => setScreen(1)} setToast={showToast} />}
-        {screen === 4 && <InboxScreen user={user} userProfile={userProfile} onBack={() => setScreen(1)} onSelectMessage={msg => { setSelectedMessage(msg); setScreen(5); }} setToast={showToast} />}
-        {screen === 5 && selectedMessage && <ViralPaywallScreen user={user} userProfile={userProfile} message={selectedMessage} onBack={() => setScreen(4)} onUnlock={(msgWithId) => { setSelectedMessage(msgWithId || selectedMessage); setScreen(6); }} setToast={showToast} />}
+        {screen === 4 && <InboxScreen user={user} userProfile={userProfile} onBack={() => setScreen(1)} onSelectMessage={msg => { setSelectedMessage(msg); setScreen(5); }} setToast={showToast} onOpenStore={() => setIsStoreOpen(true)} />}
+        {screen === 5 && selectedMessage && <ViralPaywallScreen user={user} userProfile={userProfile} message={selectedMessage} onBack={() => setScreen(4)} onUnlock={(msgWithId) => { setSelectedMessage(msgWithId || selectedMessage); setScreen(6); }} setToast={showToast} onOpenStore={() => setIsStoreOpen(true)} />}
         {screen === 6 && selectedMessage && <RevealScreen message={selectedMessage} onBack={() => setScreen(4)} />}
+        
+        {/* Modal da Loja/Carteira (Válvula de Escape) */}
+        <StoreModal isOpen={isStoreOpen} onClose={() => setIsStoreOpen(false)} user={user} userProfile={userProfile} setToast={showToast} />
       </div>
+
       <Toast message={toast} type={toastType} onClose={() => setToast(null)} />
     </div>
   );

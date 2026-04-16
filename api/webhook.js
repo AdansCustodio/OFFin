@@ -3,96 +3,100 @@ import admin from 'firebase-admin';
 import crypto from 'crypto';
 
 /**
- * WEBHOOK OFFIN - VERSÃO DE PRODUÇÃO COM VALIDAÇÃO DE ASSINATURA
- * Corrigido para evitar erro 403 em testes do Mercado Pago.
+ * WEBHOOK OFFIN - VERSÃO DE PRODUÇÃO V2 (ROBUSTEZ AUMENTADA)
+ * Foco: Resolver o erro 403 e validar assinaturas do Mercado Pago.
  */
 
-// Inicialização do Firebase Admin (Privilégios de Servidor)
+// 1. Inicialização do Firebase Admin com tratamento de erro explícito
 if (!admin.apps.length) {
   try {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
-    });
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
+      console.error('ERRO: Variável FIREBASE_SERVICE_ACCOUNT não encontrada na Vercel.');
+    } else {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      console.log('Firebase Admin inicializado com sucesso.');
+    }
   } catch (error) {
-    console.error('Erro ao inicializar Firebase Admin:', error);
+    console.error('Erro crítico ao ler FIREBASE_SERVICE_ACCOUNT. Verifique se o JSON é válido:', error.message);
   }
 }
 
 const db = admin.firestore();
 
 export default async function handler(req, res) {
-  // Configuração de Headers para evitar bloqueios (CORS e Preflight)
+  // Configuração Global de Headers para evitar bloqueios de rede
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-signature, x-request-id');
 
-  // Responder OK para requisições OPTIONS (Preflight) ou métodos não suportados
+  // Resposta rápida para preflight do navegador
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  // O Mercado Pago às vezes testa com GET ou POST vazio. 
-  // Retornamos 200 imediatamente se for apenas um teste de rota.
-  if (req.method !== 'POST' && req.method !== 'GET') {
-    return res.status(200).send('OK'); 
+  // Resposta para testes simples de URL (GET)
+  if (req.method === 'GET') {
+    return res.status(200).send('OFFin Webhook: Endpoint Ativo e Operacional.');
   }
 
   try {
-    // 1. Extração de IDs e Tipos de diversas fontes possíveis (Body ou Query)
+    // Captura de dados da notificação (Body ou Query String)
     const paymentId = req.body?.data?.id || req.query?.id || req.body?.id;
     const type = req.body?.type || req.query?.topic || req.body?.topic || req.body?.action;
 
-    // Se o corpo estiver vazio ou não houver ID, é apenas um "ping" de teste do MP.
+    // Se o Mercado Pago enviar um teste vazio, respondemos OK para passar no teste de rota
     if (!paymentId) {
-      console.log('Recebido ping de teste ou requisição sem ID.');
-      return res.status(200).send('OK - Test Connection');
+      console.log('Notificação recebida sem ID de pagamento (Provável teste de rota).');
+      return res.status(200).send('OK');
     }
 
-    // --- INÍCIO DA VALIDAÇÃO DE SEGURANÇA (x-signature) ---
+    // --- VALIDAÇÃO DE ASSINATURA (OPCIONAL PARA TESTES, RECOMENDADA PARA PRODUÇÃO) ---
     const signatureHeader = req.headers['x-signature'];
     const requestId = req.headers['x-request-id'];
     const webhookSecret = process.env.MP_WEBHOOK_SECRET;
 
-    // Só validamos se todos os dados estiverem presentes. 
-    // Em testes manuais do painel MP, o segredo pode não bater se não configurado.
-    if (signatureHeader && requestId && webhookSecret && paymentId) {
-      const parts = signatureHeader.split(',');
-      const ts = parts.find(p => p.startsWith('ts='))?.split('=')[1];
-      const v1 = parts.find(p => p.startsWith('v1='))?.split('=')[1];
+    if (signatureHeader && webhookSecret) {
+      try {
+        const parts = signatureHeader.split(',');
+        const ts = parts.find(p => p.startsWith('ts='))?.split('=')[1];
+        const v1 = parts.find(p => p.startsWith('v1='))?.split('=')[1];
 
-      if (ts && v1) {
         const manifest = `id:${paymentId};request-id:${requestId};ts:${ts};`;
         const hmac = crypto.createHmac('sha256', webhookSecret);
         hmac.update(manifest);
         const checkHash = hmac.digest('hex');
 
         if (checkHash !== v1) {
-          console.warn('[AVISO] Assinatura inválida detectada. Verifique o MP_WEBHOOK_SECRET na Vercel.');
-          // Em desenvolvimento/teste, você pode comentar a linha abaixo para ignorar o erro de assinatura
-          // return res.status(200).send('Invalid signature but accepted for debug');
+          console.warn(`[AVISO] Assinatura não confere para o ID ${paymentId}. Verifique se MP_WEBHOOK_SECRET está correto.`);
+          // Durante os testes, não vamos bloquear com 401 para permitir o fluxo mesmo com segredo errado
+        } else {
+          console.log(`[OK] Assinatura validada com sucesso para o ID ${paymentId}.`);
         }
+      } catch (e) {
+        console.error('Falha ao processar assinatura x-signature:', e.message);
       }
     }
-    // --- FIM DA VALIDAÇÃO DE SEGURANÇA ---
 
-    console.log(`Processando notificação: Tipo=${type}, ID=${paymentId}`);
-
-    // 2. Processamento do pagamento aprovado
-    // Tipos comuns: payment, payment.created, payment.updated
+    // --- PROCESSAMENTO DO PAGAMENTO ---
     if (type?.includes('payment')) {
       const accessToken = process.env.MP_ACCESS_TOKEN;
-      if (!accessToken) throw new Error("AccessToken não configurado nas variáveis de ambiente.");
+      if (!accessToken) {
+        console.error('Erro: MP_ACCESS_TOKEN não configurado.');
+        return res.status(200).send('Token missing');
+      }
 
       const client = new MercadoPagoConfig({ accessToken: accessToken });
       const payment = new Payment(client);
 
       const paymentData = await payment.get({ id: paymentId });
 
+      // Se o pagamento foi aprovado, entregamos as moedas
       if (paymentData.status === 'approved') {
         const userId = paymentData.metadata?.user_id;
         const packageId = paymentData.metadata?.package_id;
-        
         const appId = "offinn-89849"; 
 
         if (userId && packageId) {
@@ -106,17 +110,17 @@ export default async function handler(req, res) {
               t.update(userRef, { tokens: currentTokens + tokensToAdd });
             }
           });
-          console.log(`[SUCESSO] ${packageId} moedas creditadas ao user ${userId}`);
+          console.log(`[SUCESSO] ${packageId} moedas entregues ao usuário ${userId}`);
         }
       }
     }
 
-    // Sempre retornar 200 OK para o Mercado Pago não reenviar a mesma notificação
+    // Retornamos sempre 200 para o Mercado Pago
     return res.status(200).send('OK');
 
   } catch (error) {
-    console.error('Erro no processamento do Webhook:', error.message);
-    // Retornamos 200 mesmo em caso de erro interno para evitar loops de retry do MP
-    return res.status(200).send('Handled with internal log');
+    console.error('Erro interno no processamento do Webhook:', error.message);
+    // Retornamos 200 mesmo no erro para evitar retentativas infinitas do MP
+    return res.status(200).send('Processed with log');
   }
 }

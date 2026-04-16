@@ -313,7 +313,7 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
         } catch (linkErr) {
           if (linkErr.code === 'auth/unauthorized-domain') {
             const currentDomain = window.location.hostname;
-            setToast(`Domínio não autorizado. Adicione "${currentDomain}" no Console do Firebase.`);
+            setToast(`Adicione "${currentDomain}" no Console do Firebase.`);
             setLoading(false);
           } else {
             const result = await signInWithPopup(auth, provider);
@@ -386,7 +386,7 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
         await linkWithPopup(user, provider);
       } catch (linkErr) {
         if (linkErr.code === 'auth/unauthorized-domain') {
-          setToast(`Domínio não autorizado. Adicione "${window.location.hostname}" no Firebase.`);
+          setToast(`Adicione "${window.location.hostname}" no Firebase.`);
         } else {
           await signInWithPopup(auth, provider);
         }

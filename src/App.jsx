@@ -29,7 +29,8 @@ import {
   Lock,
   Unlock,
   AlertCircle,
-  ArrowRight
+  ArrowRight,
+  XCircle
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO FIREBASE E URL ---
@@ -49,7 +50,6 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : "offinn-89849"; 
-// Definimos o APP_URL apontando para o arquivo onde o React está injetado
 const BASE_URL = "https://of-fin.vercel.app";
 const APP_URL = `${BASE_URL}/app.html`;
 
@@ -72,6 +72,21 @@ const copyToClipboardFallback = (text) => {
 };
 
 // --- COMPONENTES DE UI ---
+const Toast = ({ message, type = 'error', onClose }) => {
+  if (!message) return null;
+  return (
+    <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 duration-300">
+      <div className={`px-6 py-4 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-3 border ${
+        type === 'error' ? 'bg-red-500/90 border-red-400 text-white' : 'bg-cyan-500/90 border-cyan-400 text-white'
+      }`}>
+        {type === 'error' ? <XCircle size={20} /> : <CheckCircle2 size={20} />}
+        <p className="text-sm font-bold">{message}</p>
+        <button onClick={onClose} className="ml-2 opacity-50 hover:opacity-100"><XCircle size={16} /></button>
+      </div>
+    </div>
+  );
+};
+
 const Button = ({ children, onClick, variant = 'primary', icon: Icon, disabled, loading, className = '' }) => {
   const base = 'w-full py-4 px-6 rounded-2xl font-bold text-lg transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50';
   const variants = {
@@ -116,7 +131,9 @@ const OffinLogo = ({ scale = 1 }) => (
   </div>
 );
 
-const CreateLinkScreen = ({ user, onNext }) => {
+// --- TELAS ---
+
+const CreateLinkScreen = ({ user, onNext, setToast }) => {
   const [handle, setHandle] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -128,7 +145,10 @@ const CreateLinkScreen = ({ user, onNext }) => {
       const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid);
       await setDoc(userRef, { uid: user.uid, handle: cleanHandle, createdAt: new Date().toISOString() }, { merge: true });
       onNext(2); 
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+    } catch (err) { 
+      console.error(err);
+      setToast("Erro ao criar perfil. Tente novamente.");
+    } finally { setLoading(false); }
   };
 
   return (
@@ -158,7 +178,6 @@ const CreateLinkScreen = ({ user, onNext }) => {
 
 const LinkReadyScreen = ({ user, onNext }) => {
   const [copied, setCopied] = useState(false);
-  // O link de compartilhamento agora aponta explicitamente para app.html
   const shareLink = `${APP_URL}?u=${user?.uid}`;
 
   const handleCopy = () => {
@@ -210,12 +229,11 @@ const LinkReadyScreen = ({ user, onNext }) => {
   );
 };
 
-const SendSecretScreen = ({ targetUid, user, onReset }) => {
+const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
   const [targetHandle, setTargetHandle] = useState('...');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
-  const [toast, setToast] = useState(null);
 
   useEffect(() => {
     const fetchTarget = async () => {
@@ -237,7 +255,7 @@ const SendSecretScreen = ({ targetUid, user, onReset }) => {
         text: message.trim(), createdAt: new Date().toISOString(), isRevealed: false
       });
       setSent(true);
-    } catch (err) { setToast("Erro ao enviar."); } finally { setLoading(false); }
+    } catch (err) { setToast("Erro ao enviar segredo."); } finally { setLoading(false); }
   };
 
   const handleSend = async () => {
@@ -245,9 +263,18 @@ const SendSecretScreen = ({ targetUid, user, onReset }) => {
     setLoading(true);
     if (user.isAnonymous) {
       try {
-        const result = await linkWithPopup(user, new GoogleAuthProvider());
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        const result = await linkWithPopup(user, provider);
         await sendToDB(result.user);
-      } catch (error) { setLoading(false); setToast("Autenticação necessária."); }
+      } catch (error) { 
+        setLoading(false); 
+        if (error.code === 'auth/popup-blocked') {
+          setToast("O navegador bloqueou a janela. Ative os popups.");
+        } else {
+          setToast("Autenticação com Google falhou.");
+        }
+      }
     } else { await sendToDB(user); }
   };
 
@@ -267,7 +294,6 @@ const SendSecretScreen = ({ targetUid, user, onReset }) => {
         <h2 className="text-3xl font-extrabold text-white leading-tight">Mande um segredo para @{targetHandle}</h2>
         <div className="w-full max-w-xs space-y-4">
           <textarea placeholder="Escreva algo curioso..." value={message} onChange={(e) => setMessage(e.target.value)} maxLength={150} className="w-full h-32 bg-slate-800 border border-slate-700 rounded-2xl p-4 text-white resize-none focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all" />
-          {toast && <p className="text-pink-400 text-xs font-bold">{toast}</p>}
           <Button onClick={handleSend} loading={loading} disabled={!message.trim()} variant="primary">
             {user?.isAnonymous ? 'Assinar e Enviar' : 'Enviar Secreto'}
           </Button>
@@ -277,7 +303,7 @@ const SendSecretScreen = ({ targetUid, user, onReset }) => {
   );
 };
 
-const InboxScreen = ({ user, onSelectMessage, onBack }) => {
+const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [linking, setLinking] = useState(false);
@@ -296,7 +322,18 @@ const InboxScreen = ({ user, onSelectMessage, onBack }) => {
 
   const handleLinkGoogle = async () => {
     setLinking(true);
-    try { await linkWithPopup(user, new GoogleAuthProvider()); } catch (e) { console.error(e); } finally { setLinking(false); }
+    try { 
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      await linkWithPopup(user, provider); 
+    } catch (e) { 
+      console.error(e); 
+      if (e.code === 'auth/popup-blocked') {
+        setToast("O navegador bloqueou a janela. Ative os popups.");
+      } else {
+        setToast("Não foi possível conectar ao Google.");
+      }
+    } finally { setLinking(false); }
   };
 
   return (
@@ -404,6 +441,7 @@ export default function App() {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [targetUid, setTargetUid] = useState(null); 
   const [selectedMessage, setSelectedMessage] = useState(null); 
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -412,8 +450,6 @@ export default function App() {
           try {
             await signInWithCustomToken(auth, __initial_auth_token);
           } catch (tokenErr) {
-            // Se o token personalizado falhar (ex: expiração ou mismatch), 
-            // tentamos o login anónimo para manter a app funcional.
             await signInAnonymously(auth);
           }
         } else {
@@ -450,13 +486,14 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-100 flex justify-center font-sans antialiased">
       <div className="w-full max-w-md bg-white min-h-screen shadow-2xl relative overflow-hidden flex flex-col">
-        {screen === 1 && <CreateLinkScreen user={user} onNext={setScreen} />}
+        {screen === 1 && <CreateLinkScreen user={user} onNext={setScreen} setToast={setToast} />}
         {screen === 2 && <LinkReadyScreen user={user} onNext={setScreen} />}
-        {screen === 3 && targetUid && <SendSecretScreen targetUid={targetUid} user={user} onReset={() => setScreen(1)} />}
-        {screen === 4 && <InboxScreen user={user} onBack={() => setScreen(1)} onSelectMessage={msg => { setSelectedMessage(msg); setScreen(5); }} />}
+        {screen === 3 && targetUid && <SendSecretScreen targetUid={targetUid} user={user} onReset={() => setScreen(1)} setToast={setToast} />}
+        {screen === 4 && <InboxScreen user={user} onBack={() => setScreen(1)} onSelectMessage={msg => { setSelectedMessage(msg); setScreen(5); }} setToast={setToast} />}
         {screen === 5 && selectedMessage && <ViralPaywallScreen user={user} message={selectedMessage} onBack={() => setScreen(4)} onUnlock={() => setScreen(6)} />}
         {screen === 6 && selectedMessage && <RevealScreen message={selectedMessage} onBack={() => setScreen(4)} />}
       </div>
+      <Toast message={toast} onClose={() => setToast(null)} />
     </div>
   );
 }

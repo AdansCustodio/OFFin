@@ -48,8 +48,8 @@ import {
 } from 'lucide-react';
 
 /**
- * PROJETO OFFIN - VERSÃO DE PRODUÇÃO V12 (STORE & ESCAPE VALVE)
- * Foco: Bônus Diário (Retenção) e Loja de Pacotes (Monetização)
+ * PROJETO OFFIN - VERSÃO DE PRODUÇÃO V13 (FALLBACK CANVAS)
+ * Foco: Resolução do problema de download de imagem em WebViews (TikTok/Instagram nativo).
  */
 
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
@@ -100,8 +100,8 @@ const copyToClipboardFallback = (text) => {
   document.body.removeChild(textArea);
 };
 
-// --- GERADOR DE IMAGEM PARA STORIES ---
-const downloadStoryImage = (handle) => {
+// --- GERADOR DE IMAGEM PARA STORIES (Agora retorna apenas a DataURL) ---
+const generateStoryImage = (handle) => {
   const canvas = document.createElement('canvas');
   canvas.width = 1080;
   canvas.height = 1920;
@@ -157,10 +157,7 @@ const downloadStoryImage = (handle) => {
   ctx.font = 'bold 48px sans-serif';
   ctx.fillText('Descubra você também!', 540, 1830);
 
-  const link = document.createElement('a');
-  link.download = `offin-desafio.png`;
-  link.href = canvas.toDataURL('image/png');
-  link.click();
+  return canvas.toDataURL('image/png');
 };
 
 const Toast = ({ message, type = 'error', onClose }) => {
@@ -421,6 +418,8 @@ const CreateLinkScreen = ({ user, referrerUid, onNext, setToast }) => {
 const LinkReadyScreen = ({ user, onNext }) => {
   const [copied, setCopied] = useState(false);
   const [handle, setHandle] = useState('');
+  const [generatedImage, setGeneratedImage] = useState(null);
+  
   const shareLink = `${APP_URL}?u=${user?.uid}`;
 
   useEffect(() => {
@@ -437,6 +436,59 @@ const LinkReadyScreen = ({ user, onNext }) => {
     setTimeout(() => onNext(4), 2000); 
   };
 
+  const handleDownloadAttempt = () => {
+    // 1. Gera a imagem base64
+    const dataUrl = generateStoryImage(handle);
+    
+    // 2. Sempre mostra o Fallback na tela (para garantir em WebViews do Insta/TikTok)
+    setGeneratedImage(dataUrl);
+
+    // 3. Tenta forçar o download programático (funciona no Chrome/Safari padrão)
+    try {
+      const link = document.createElement('a');
+      link.download = `offin-desafio-${handle || 'secreto'}.png`;
+      link.href = dataUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.warn("Download automático bloqueado pelo navegador.", err);
+    }
+  };
+
+  // Se o fallback de imagem estiver ativo, renderizamos ele por cima de tudo
+  if (generatedImage) {
+    return (
+      <div className="flex flex-col min-h-screen p-8 animate-in slide-in-from-bottom-5 overflow-y-auto text-center items-center justify-center relative bg-[#09090b] z-50">
+        <button onClick={() => setGeneratedImage(null)} className="absolute top-6 left-6 p-3 bg-white/5 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-all">
+          <ChevronLeft size={24} />
+        </button>
+        
+        <h2 className="text-2xl font-black text-white mb-3 italic uppercase">Quase lá!</h2>
+        
+        <div className="bg-cyan-500/10 border border-cyan-500/30 p-4 rounded-xl mb-8 w-full max-w-sm">
+          <p className="text-sm text-cyan-400 font-bold animate-pulse flex flex-col gap-2 items-center">
+            <Download size={22} />
+            Pressione e segure a imagem abaixo para "Salvar na Galeria" ou "Compartilhar"
+          </p>
+        </div>
+        
+        {/* pointerEvents e WebkitTouchCallout garantem que o Long-Press funcione no iOS e Android */}
+        <img 
+          src={generatedImage} 
+          alt="Seu Story" 
+          className="w-[70%] max-w-[280px] rounded-[2rem] shadow-[0_0_40px_rgba(6,182,212,0.4)] border border-white/10" 
+          style={{ pointerEvents: 'auto', WebkitTouchCallout: 'default' }} 
+        />
+        
+        <div className="w-full max-w-sm mt-10">
+          <Button onClick={() => setGeneratedImage(null)} variant="secondary">Já salvei a foto, voltar</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Renderização normal da tela LinkReadyScreen
   return (
     <div className="flex flex-col min-h-screen p-8 animate-in slide-in-from-right overflow-y-auto text-center justify-center items-center relative">
       <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none mix-blend-overlay"></div>
@@ -456,7 +508,7 @@ const LinkReadyScreen = ({ user, onNext }) => {
         <div className="bg-[#09090b] border border-white/5 p-6 rounded-2xl space-y-6 shadow-2xl backdrop-blur-md">
           <div className="space-y-3">
             <span className="text-[10px] font-black text-pink-500 uppercase tracking-widest">Passo 01</span>
-            <Button onClick={() => downloadStoryImage(handle)} variant="secondary" icon={Download}>Baixar Foto para o Story</Button>
+            <Button onClick={handleDownloadAttempt} variant="secondary" icon={Download}>Baixar Foto para o Story</Button>
           </div>
           <div className="h-px bg-white/5 w-full" />
           <div className="space-y-3">

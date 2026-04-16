@@ -32,12 +32,16 @@ import {
   AlertCircle,
   ArrowRight,
   XCircle,
-  Globe
+  Globe,
+  Send,
+  Inbox,
+  Clock,
+  ExternalLink
 } from 'lucide-react';
 
 /**
- * PROJETO OFFIN - VERSÃO DE PRODUÇÃO CORRIGIDA
- * Foco: Resiliência de Autenticação, Tratamento de Popup Bloqueado e UX
+ * PROJETO OFFIN - VERSÃO DE PRODUÇÃO V3
+ * Foco: Resiliência In-App Browser (Instagram), Histórico de Enviados/Recebidos e Status
  */
 
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
@@ -56,6 +60,12 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : "offinn-89849"; 
+
+// --- DETECÇÃO DE NAVEGADOR INTERNO (INSTAGRAM/FB) ---
+const isInstagramBrowser = () => {
+  const ua = navigator.userAgent || navigator.vendor || window.opera;
+  return (ua.indexOf('Instagram') > -1) || (ua.indexOf('FBAN') > -1) || (ua.indexOf('FBAV') > -1);
+};
 
 // --- DETECÇÃO DINÂMICA DE URL ---
 const getCurrentAppUrl = () => {
@@ -105,6 +115,16 @@ const Toast = ({ message, type = 'error', onClose }) => {
   );
 };
 
+const BrowserWarning = () => {
+  if (!isInstagramBrowser()) return null;
+  return (
+    <div className="bg-gradient-to-r from-pink-600 to-purple-600 text-white p-3 text-[10px] font-bold text-center flex items-center justify-center gap-2 animate-pulse">
+      <AlertCircle size={14} />
+      ESTÁS NO INSTAGRAM. SE O LOGIN FALHAR, CLICA EM "..." E "ABRIR NO NAVEGADOR".
+    </div>
+  );
+};
+
 const Button = ({ children, onClick, variant = 'primary', icon: Icon, disabled, loading, className = '' }) => {
   const base = 'w-full py-4 px-6 rounded-2xl font-bold text-lg transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50';
   const variants = {
@@ -144,8 +164,8 @@ const OffinLogo = ({ scale = 1 }) => (
         <circle cx="195" cy="115" r="6" fill="none" stroke="#475569" strokeWidth="3" />
       </svg>
     </div>
-    <span className="text-7xl font-black tracking-tighter text-white relative z-10" style={{ textShadow: '0px 2px 0px #a5f3fc, 0px 4px 0px #22d3ee, 0px 7px 0px #0891b2, 0px 10px 0px #0e7490, 3px 15px 15px rgba(0,0,0,0.25)', WebkitTextStroke: '1px #ffffff' }}>OFF</span>
-    <span className="text-[4.5rem] font-black tracking-tighter relative z-10 -ml-1 mt-6" style={{ background: 'linear-gradient(180deg, #3b82f6 0%, #a855f7 45%, #ec4899 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', filter: 'drop-shadow(2px 4px 0px #0f172a) drop-shadow(0px 8px 12px rgba(0,0,0,0.4))', lineHeight: '1' }}>IN</span>
+    <span className="text-7xl font-black tracking-tighter text-white relative z-10 italic" style={{ textShadow: '0px 2px 0px #a5f3fc, 0px 4px 0px #22d3ee, 0px 7px 0px #0891b2, 0px 10px 0px #0e7490, 3px 15px 15px rgba(0,0,0,0.25)', WebkitTextStroke: '1px #ffffff' }}>OFF</span>
+    <span className="text-[4.5rem] font-black tracking-tighter relative z-10 -ml-1 mt-6 italic" style={{ background: 'linear-gradient(180deg, #3b82f6 0%, #a855f7 45%, #ec4899 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', filter: 'drop-shadow(2px 4px 0px #0f172a) drop-shadow(0px 8px 12px rgba(0,0,0,0.4))', lineHeight: '1' }}>IN</span>
   </div>
 );
 
@@ -180,14 +200,15 @@ const CreateLinkScreen = ({ user, onNext, setToast }) => {
 
   return (
     <div className="relative flex flex-col min-h-screen bg-[#18181b] overflow-y-auto">
+      <BrowserWarning />
       <div className="absolute top-[-15%] left-[-20%] w-[70%] h-[70%] bg-pink-600/30 blur-[120px] rounded-full pointer-events-none mix-blend-screen" />
       <div className="absolute inset-0 pointer-events-none opacity-40 mix-blend-overlay" style={{ backgroundImage: `repeating-linear-gradient(105deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 4px)` }} />
       <div className="relative z-10 flex flex-col min-h-screen p-8 animate-in fade-in duration-500">
         <header className="pt-6 pb-2 flex justify-center"><OffinLogo scale={0.8} /></header>
         <main className="flex-1 flex flex-col items-center justify-center text-center space-y-10 py-10">
           <div className="space-y-4">
-            <h2 className="text-4xl font-extrabold text-white leading-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">Receba segredos <br /> anônimos 👀</h2>
-            <p className="text-lg text-slate-300 font-medium px-4">Descubra o que pensam de você sem que ninguém saiba quem mandou.</p>
+            <h2 className="text-4xl font-extrabold text-white leading-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)] italic">Segredos <br /> Anônimos 👀</h2>
+            <p className="text-lg text-slate-300 font-medium px-4">Cria o teu link, coloca no Story e deixa a curiosidade fazer o resto.</p>
           </div>
           <div className="w-full max-w-xs space-y-4">
             <div className="relative shadow-[0_10px_30px_rgba(0,0,0,0.3)] rounded-2xl">
@@ -199,8 +220,8 @@ const CreateLinkScreen = ({ user, onNext, setToast }) => {
                 className="w-full bg-slate-900/60 border border-slate-700 rounded-2xl py-4 px-6 text-white font-bold focus:outline-none focus:ring-2 focus:ring-cyan-500/50 backdrop-blur-md placeholder:text-slate-500" 
               />
             </div>
-            <Button onClick={handleCreateProfile} loading={loading} disabled={!handle || handle === '@' || !user}>Criar meu link</Button>
-            <Button onClick={() => onNext(4)} variant="ghost" className="!text-cyan-100 opacity-80">Já tenho link (Ver Caixa)</Button>
+            <Button onClick={handleCreateProfile} loading={loading} disabled={!handle || handle === '@' || !user}>Gerar Meu Link</Button>
+            <Button onClick={() => onNext(4)} variant="ghost" className="!text-cyan-100 opacity-80">Já tenho conta (Entrar no Radar)</Button>
           </div>
         </main>
       </div>
@@ -231,24 +252,24 @@ const LinkReadyScreen = ({ user, onNext }) => {
       <main className="flex-1 flex flex-col items-center justify-start p-6 space-y-6 pb-12">
         <div className="text-center space-y-2">
           <h2 className="text-2xl font-extrabold text-white">A armadilha tá pronta!</h2>
-          <p className="text-slate-400 font-medium text-sm">Siga os 2 passos abaixo para postar no Instagram.</p>
+          <p className="text-slate-400 font-medium text-sm italic">Posta agora o link no teu Story.</p>
         </div>
         <div className="w-full max-w-sm bg-slate-900/50 p-6 rounded-[2rem] border border-slate-800/80 space-y-6 shadow-2xl backdrop-blur-sm">
           <div className="space-y-4">
             <div className="flex items-center gap-3 justify-center">
               <span className="bg-pink-500 text-white w-6 h-6 rounded-full flex items-center justify-center font-black text-xs shadow-[0_0_10px_rgba(236,72,153,0.5)]">1</span>
-              <p className="text-white font-bold text-sm">Tire um print desta imagem 👇</p>
+              <p className="text-white font-bold text-sm">Tira um print desta imagem 👇</p>
             </div>
             <div className="aspect-[9/16] w-full max-w-[220px] mx-auto bg-gradient-to-br from-cyan-400 to-pink-500 rounded-[2rem] p-6 flex flex-col justify-between text-white shadow-2xl relative overflow-hidden border-[6px] border-slate-950">
               <div className="absolute inset-0 bg-white/5 mix-blend-overlay pointer-events-none" />
               <div className="space-y-4 text-center z-10 mt-6">
                 <Ghost size={48} className="mx-auto opacity-90 drop-shadow-lg" />
                 <div className="bg-white/20 backdrop-blur-md p-4 rounded-2xl border border-white/30">
-                  <p className="font-black text-xl leading-tight text-white uppercase tracking-tighter italic drop-shadow-sm">Me mandem segredos anônimos 👀</p>
+                  <p className="font-black text-xl leading-tight text-white uppercase tracking-tighter italic drop-shadow-sm">Mandem-me segredos anônimos! 👀</p>
                 </div>
               </div>
               <div className="z-10 mb-4 flex flex-col items-center">
-                <div className="bg-white text-slate-900 px-4 py-3 rounded-xl font-bold text-xs flex items-center gap-2 shadow-xl">🔗 offin.link/secreto</div>
+                <div className="bg-white text-slate-900 px-4 py-3 rounded-xl font-bold text-xs flex items-center gap-2 shadow-xl italic tracking-tighter">🔗 offin.link/radar</div>
               </div>
             </div>
           </div>
@@ -256,10 +277,10 @@ const LinkReadyScreen = ({ user, onNext }) => {
           <div className="space-y-4">
             <div className="flex items-center gap-3 justify-center">
               <span className="bg-cyan-500 text-white w-6 h-6 rounded-full flex items-center justify-center font-black text-xs shadow-[0_0_10px_rgba(6,182,212,0.5)]">2</span>
-              <p className="text-white font-bold text-sm">Copie seu link para colar no adesivo</p>
+              <p className="text-white font-bold text-sm">Copia o teu link pessoal</p>
             </div>
             <Button onClick={handleCopy} icon={copied ? CheckCircle2 : Copy} variant={copied ? 'success' : 'primary'} className="py-4 shadow-[0_0_20px_rgba(6,182,212,0.2)]" disabled={!shareLink}>
-              {copied ? 'Copiado!' : shareLink ? 'Copiar Link e Continuar' : 'Gerando link...'}
+              {copied ? 'Link Copiado!' : 'Copiar Link e Abrir Radar'}
             </Button>
           </div>
         </div>
@@ -291,7 +312,9 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
         id: msgId, targetUid, senderUid: currentUser.uid,
         senderName: currentUser.displayName || 'Anônimo',
         senderPhoto: currentUser.photoURL || '',
-        text: message.trim(), createdAt: new Date().toISOString(), isRevealed: false
+        text: message.trim(), createdAt: new Date().toISOString(), 
+        isRevealed: false,
+        status: 'sent' // sent -> viewed -> revealed
       });
       setSent(true);
     } catch (err) { setToast("Erro ao enviar segredo."); } finally { setLoading(false); }
@@ -310,11 +333,7 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
           await sendToDB(result.user);
         } catch (linkErr) {
           if (linkErr.code === 'auth/popup-blocked') {
-            setToast("O popup foi bloqueado. Tente clicar no botão novamente ou ative popups no navegador.");
-            setLoading(false);
-          } else if (linkErr.code === 'auth/unauthorized-domain') {
-            const currentDomain = window.location.hostname;
-            setToast(`Adicione "${currentDomain}" no Console do Firebase.`);
+            setToast("O navegador bloqueou o login. Tenta clicar novamente ou abrir no Chrome/Safari.");
             setLoading(false);
           } else {
             const result = await signInWithPopup(auth, provider);
@@ -323,13 +342,7 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
         }
       } catch (error) { 
         setLoading(false); 
-        if (error.code === 'auth/popup-blocked') {
-          setToast("Janela bloqueada pelo navegador. Tente clicar novamente.");
-        } else if (error.code === 'auth/unauthorized-domain') {
-          setToast(`Adicione "${window.location.hostname}" aos domínios autorizados no Firebase.`);
-        } else {
-          setToast(`Erro Google: ${error.code}`);
-        }
+        setToast(`Falha: ${error.code}`);
       }
     } else { await sendToDB(user); }
   };
@@ -337,21 +350,22 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
   if (sent) return (
     <div className="flex flex-col min-h-screen bg-slate-50 items-center justify-center p-8 text-center animate-in zoom-in overflow-y-auto">
       <CheckCircle2 size={64} className="text-emerald-500 mx-auto mb-4" />
-      <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Segredo enviado! 🤫</h2>
-      <p className="text-slate-500">@{targetHandle} só vai descobrir quem é você se tiver coragem de postar.</p>
-      <Button onClick={onReset} className="mt-8 max-w-xs mx-auto">Criar meu link também</Button>
+      <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight italic">Segredo Enviado! 🤫</h2>
+      <p className="text-slate-500">@{targetHandle} só saberá quem és tu se aceitar o desafio viral.</p>
+      <Button onClick={onReset} className="mt-8 max-w-xs mx-auto">Criar o Meu Link Também</Button>
     </div>
   );
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-900 overflow-y-auto">
+      <BrowserWarning />
       <header className="pt-4 pb-2 flex justify-center"><OffinLogo scale={0.65} /></header>
       <main className="flex-1 flex flex-col items-center justify-center text-center space-y-8 p-8">
-        <h2 className="text-3xl font-extrabold text-white leading-tight">Mande um segredo para @{targetHandle}</h2>
+        <h2 className="text-3xl font-extrabold text-white leading-tight italic">Mandar segredo para @{targetHandle}</h2>
         <div className="w-full max-w-xs space-y-4">
-          <textarea placeholder="Escreva algo curioso..." value={message} onChange={(e) => setMessage(e.target.value)} maxLength={150} className="w-full h-32 bg-slate-800 border border-slate-700 rounded-2xl p-4 text-white resize-none focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all" />
+          <textarea placeholder="Escreve algo que ninguém saiba..." value={message} onChange={(e) => setMessage(e.target.value)} maxLength={150} className="w-full h-32 bg-slate-800 border border-slate-700 rounded-2xl p-4 text-white resize-none focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all font-medium" />
           <Button onClick={handleSend} loading={loading} disabled={!message.trim()} variant="primary">
-            {user?.isAnonymous ? 'Assinar e Enviar' : 'Enviar Secreto'}
+            {user?.isAnonymous ? 'Assinar e Enviar' : 'Enviar Segredo'}
           </Button>
         </div>
       </main>
@@ -363,21 +377,21 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [linking, setLinking] = useState(false);
+  const [activeTab, setActiveTab] = useState('received'); // 'received' or 'sent'
 
   useEffect(() => {
     if (!user) return;
     const msgRef = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
     const unsubscribe = onSnapshot(msgRef, (snapshot) => {
       const allMsgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const myMsgs = allMsgs.filter(m => m.targetUid === user.uid).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      setMessages(myMsgs);
+      setMessages(allMsgs);
       setLoading(false);
-    }, (error) => { 
-      console.error("Erro Firestore:", error);
-      setLoading(false); 
     });
     return () => unsubscribe();
   }, [user]);
+
+  const receivedMsgs = messages.filter(m => m.targetUid === user.uid).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const sentMsgs = messages.filter(m => m.senderUid === user.uid).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   const handleLinkGoogle = async () => {
     if (!user) return;
@@ -385,58 +399,101 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
     try { 
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      try {
-        await linkWithPopup(user, provider);
-      } catch (linkErr) {
-        if (linkErr.code === 'auth/popup-blocked') {
-          setToast("Popup bloqueado. Tente clicar novamente ou verifique as definições do navegador.");
-        } else if (linkErr.code === 'auth/unauthorized-domain') {
-          setToast(`Adicione "${window.location.hostname}" no Firebase.`);
-        } else {
-          await signInWithPopup(auth, provider);
-        }
-      }
-      setToast("Conta salva com sucesso!", "success");
+      await linkWithPopup(user, provider);
+      setToast("Conta sincronizada com sucesso!", "success");
     } catch (e) { 
       if (e.code === 'auth/popup-blocked') {
-        setToast("Bloqueio de popup. Tente clicar novamente.");
-      } else if (e.code === 'auth/unauthorized-domain') {
-        setToast(`Adicione "${window.location.hostname}" aos domínios autorizados no Firebase.`);
+        setToast("Popup bloqueado. Clica novamente ou usa o navegador externo.");
       } else {
-        setToast(`Erro ao salvar: ${e.code}`);
+        await signInWithPopup(auth, new GoogleAuthProvider());
       }
     } finally { setLinking(false); }
   };
 
+  const StatusBadge = ({ status }) => {
+    const config = {
+      sent: { label: 'Enviado', color: 'bg-slate-100 text-slate-600', icon: Send },
+      viewed: { label: 'Visto', color: 'bg-cyan-100 text-cyan-600', icon: Clock },
+      revealed: { label: 'Revelado', color: 'bg-emerald-100 text-emerald-600', icon: CheckCircle2 }
+    };
+    const s = config[status] || config.sent;
+    return (
+      <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full flex items-center gap-1 ${s.color}`}>
+        <s.icon size={10} /> {s.label}
+      </span>
+    );
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 overflow-y-auto">
-      <header className="p-6 bg-white border-b border-slate-100 flex items-center justify-between sticky top-0 z-10">
+      <header className="p-6 bg-white border-b border-slate-100 flex items-center justify-between sticky top-0 z-10 shadow-sm">
         <button onClick={onBack} className="text-slate-400 p-2"><ChevronLeft /></button>
-        <h1 className="font-bold text-slate-800 text-lg">Minha Caixa</h1>
-        <div className="w-6" />
+        <h1 className="font-bold text-slate-800 text-lg italic tracking-tight">OFF<span className="text-cyan-500">in</span> Radar</h1>
+        <div className="w-10 h-10 rounded-full bg-slate-100 border-2 border-white overflow-hidden shadow-sm">
+          <img src={user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.uid}`} alt="Perfil" />
+        </div>
       </header>
-      <main className="flex-1 p-6 space-y-6 pb-12">
+
+      {/* Tabs */}
+      <div className="bg-white flex p-1 mx-6 mt-4 rounded-xl border border-slate-200">
+        <button 
+          onClick={() => setActiveTab('received')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'received' ? 'bg-cyan-500 text-white shadow-md' : 'text-slate-400'}`}
+        >
+          <Inbox size={14} /> Recebidos ({receivedMsgs.length})
+        </button>
+        <button 
+          onClick={() => setActiveTab('sent')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'sent' ? 'bg-cyan-500 text-white shadow-md' : 'text-slate-400'}`}
+        >
+          <Send size={14} /> Enviados ({sentMsgs.length})
+        </button>
+      </div>
+
+      <main className="flex-1 p-6 space-y-4 pb-12">
         {user?.isAnonymous && (
-          <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-3xl flex items-center justify-between gap-4">
-            <div className="flex-1">
-              <p className="text-xs font-bold text-yellow-800 leading-tight">Sua conta é temporária. Salve agora para não perder seus segredos!</p>
-            </div>
-            <button onClick={handleLinkGoogle} disabled={linking} className="bg-white px-3 py-2 rounded-xl text-xs font-bold text-slate-800 shadow-sm border border-slate-200 shrink-0 active:scale-95 transition-all">
-              {linking ? 'Salvando...' : 'Salvar com Google'}
-            </button>
+          <div className="bg-gradient-to-br from-yellow-50 to-orange-50 border border-yellow-200 p-5 rounded-[2rem] space-y-3">
+            <p className="text-xs font-bold text-yellow-800 leading-tight">Conta Temporária! Salva os teus segredos agora para não os perderes.</p>
+            <Button onClick={handleLinkGoogle} loading={linking} variant="primary" className="!py-2 !text-xs !rounded-xl shadow-none">
+              <Globe size={14} /> Sincronizar com Google
+            </Button>
           </div>
         )}
-        {loading ? <div className="flex justify-center py-20"><Loader2 className="animate-spin text-cyan-500" /></div> : 
-          messages.length === 0 ? <div className="text-center py-20 text-slate-400 font-bold uppercase tracking-widest text-xs">Nenhum segredo ainda...</div> :
-          messages.map(msg => (
-            <div key={msg.id} onClick={() => onSelectMessage(msg)} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 cursor-pointer active:scale-95 transition-all">
-              <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${msg.isRevealed ? 'bg-emerald-100 text-emerald-600' : 'bg-pink-100 text-pink-600'}`}>
-                {msg.isRevealed ? 'Revelado' : 'Trancado'}
-              </span>
-              <p className="mt-4 italic text-slate-700 font-serif text-lg leading-relaxed">"{msg.text}"</p>
-              {!msg.isRevealed && <p className="mt-4 text-xs text-cyan-500 font-black flex items-center gap-1 uppercase tracking-wider">Revelar identidade <ArrowRight size={14} /></p>}
+
+        {loading ? (
+          <div className="flex justify-center py-20"><Loader2 className="animate-spin text-cyan-500" /></div>
+        ) : (
+          (activeTab === 'received' ? receivedMsgs : sentMsgs).length === 0 ? (
+            <div className="text-center py-20">
+              <Ghost size={40} className="mx-auto text-slate-200 mb-4" />
+              <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Nada por aqui ainda...</p>
             </div>
-          ))}
+          ) : (
+            (activeTab === 'received' ? receivedMsgs : sentMsgs).map(msg => (
+              <div 
+                key={msg.id} 
+                onClick={() => activeTab === 'received' && onSelectMessage(msg)}
+                className={`bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 transition-all ${activeTab === 'received' ? 'cursor-pointer active:scale-95' : 'opacity-80'}`}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <StatusBadge status={msg.status} />
+                  <span className="text-[10px] text-slate-400 font-medium">{new Date(msg.createdAt).toLocaleDateString()}</span>
+                </div>
+                <p className="italic text-slate-700 font-serif text-lg leading-relaxed">"{msg.text}"</p>
+                {activeTab === 'received' && !msg.isRevealed && (
+                  <p className="mt-4 text-[10px] text-cyan-500 font-black flex items-center gap-1 uppercase tracking-wider">
+                    Revelar Quem Mandou <ArrowRight size={12} />
+                  </p>
+                )}
+                {activeTab === 'sent' && (
+                  <div className="mt-4 pt-4 border-t border-slate-50 flex items-center gap-2">
+                    <p className="text-[10px] text-slate-400 font-medium">Destinatário: <span className="text-slate-600 font-bold tracking-tight">Anônimo</span></p>
+                  </div>
+                )}
+              </div>
+            ))
+          )
+        )}
       </main>
     </div>
   );
@@ -444,7 +501,17 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
 
 const ViralPaywallScreen = ({ user, message, onUnlock, onBack }) => {
   const [copied, setCopied] = useState(false);
-  useEffect(() => { if (message.isRevealed) onUnlock(); }, [message]);
+  useEffect(() => { 
+    if (message.isRevealed) onUnlock(); 
+    // Atualizar status para visualizado ao entrar na tela
+    const markAsViewed = async () => {
+      if (message.status === 'sent') {
+        const msgRef = doc(db, 'artifacts', appId, 'public', 'data', 'messages', message.id);
+        await updateDoc(msgRef, { status: 'viewed' });
+      }
+    };
+    markAsViewed();
+  }, [message]);
 
   const handlePaywall = async () => {
     if (!user) return;
@@ -453,7 +520,7 @@ const ViralPaywallScreen = ({ user, message, onUnlock, onBack }) => {
     setCopied(true);
     try {
       const msgRef = doc(db, 'artifacts', appId, 'public', 'data', 'messages', message.id);
-      await updateDoc(msgRef, { isRevealed: true });
+      await updateDoc(msgRef, { isRevealed: true, status: 'revealed' });
       setTimeout(() => onUnlock(), 1500);
     } catch (e) { console.error(e); }
   };
@@ -462,15 +529,15 @@ const ViralPaywallScreen = ({ user, message, onUnlock, onBack }) => {
     <div className="flex flex-col min-h-screen bg-slate-900 text-white p-8 animate-in slide-in-from-bottom text-center justify-center space-y-12 overflow-y-auto">
       <Lock size={64} className="text-pink-500 mx-auto animate-pulse" />
       <div className="space-y-4">
-        <h2 className="text-3xl font-black uppercase tracking-tighter italic">Quem mandou?</h2>
+        <h2 className="text-3xl font-black uppercase tracking-tighter italic italic">Quem mandou?</h2>
         <div className="bg-slate-800 p-8 rounded-[2.5rem] border border-slate-700">
           <p className="italic text-xl text-slate-100 font-serif">"{message.text}"</p>
         </div>
       </div>
       <div className="bg-cyan-900/30 border border-cyan-500/50 p-8 rounded-[2.5rem] space-y-6">
-        <p className="text-sm font-bold text-cyan-100 leading-relaxed">Para revelar a identidade, você precisa passar a corrente adiante copiando seu link!</p>
+        <p className="text-sm font-bold text-cyan-100 leading-relaxed italic">Para veres a identidade, precisas de passar a corrente adiante copiando o teu link!</p>
         <Button onClick={handlePaywall} icon={copied ? Unlock : Copy} variant={copied ? 'success' : 'primary'}>
-          {copied ? 'Desbloqueando...' : 'Copiar Link e Revelar'}
+          {copied ? 'A Revelar...' : 'Copiar Link e Revelar'}
         </Button>
       </div>
     </div>
@@ -486,14 +553,14 @@ const RevealScreen = ({ message, onBack }) => {
         {isHolding ? (
           <div className="animate-in fade-in zoom-in duration-200 space-y-6">
             <div className="w-32 h-32 rounded-full mx-auto border-4 border-cyan-500 overflow-hidden shadow-2xl shadow-cyan-500/20">
-              <img src={message.senderPhoto || 'https://via.placeholder.com/150'} className="w-full h-full object-cover" />
+              <img src={message.senderPhoto || `https://api.dicebear.com/7.x/avataaars/svg?seed=${message.senderUid}`} className="w-full h-full object-cover" />
             </div>
             <p className="text-3xl font-black italic tracking-tighter text-white">{message.senderName}</p>
           </div>
         ) : (
           <div className="space-y-6">
             <ShieldCheck size={72} className="mx-auto text-cyan-500 animate-pulse" />
-            <p className="font-black text-lg text-white uppercase tracking-tight">Segure o botão abaixo para revelar</p>
+            <p className="font-black text-lg text-white uppercase tracking-tight">Segura o botão para ver</p>
           </div>
         )}
       </div>
@@ -502,7 +569,7 @@ const RevealScreen = ({ message, onBack }) => {
         onTouchStart={() => setIsHolding(true)} onTouchEnd={() => setIsHolding(false)}
         className={`w-full py-8 rounded-full font-black text-xl transition-all select-none touch-none ${isHolding ? 'bg-cyan-700 scale-95 shadow-inner' : 'bg-cyan-500 text-white shadow-2xl shadow-cyan-500/30'}`}
       >
-        {isHolding ? 'OCULTANDO...' : '👆 PRESSIONE E SEGURE'}
+        {isHolding ? 'A MOSTRAR...' : '👆 PRESSIONA E SEGURA'}
       </button>
     </div>
   );

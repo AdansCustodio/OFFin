@@ -1,1 +1,102 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Regras da Comunidade - OFFin</title>
+    
+    <!-- Tailwind CSS com plugin de tipografia -->
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
 
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap');
+
+        body {
+            background-color: #18181b;
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .bg-brushed-steel {
+            background-image: 
+                repeating-linear-gradient(105deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 4px),
+                repeating-linear-gradient(105deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.1) 2px, transparent 2px, transparent 6px);
+            mix-blend-mode: overlay;
+        }
+
+        .neon-border {
+            box-shadow: 0 0 20px rgba(236, 72, 153, 0.2);
+            border: 1px solid rgba(236, 72, 153, 0.3);
+        }
+    </style>
+</head>
+<body class="relative min-h-screen antialiased selection:bg-pink-500 selection:text-white">
+
+    <!-- Fundo Estilizado -->
+    <div class="fixed inset-0 pointer-events-none z-[-2]">
+        <div class="absolute inset-0 bg-[#18181b]"></div>
+        <div class="absolute top-[-20%] left-[-10%] w-[60vw] h-[60vw] bg-pink-600/15 blur-[120px] rounded-full mix-blend-screen"></div>
+        <div class="absolute inset-0 bg-brushed-steel opacity-60"></div>
+    </div>
+
+    <!-- Navegação -->
+    <nav class="relative z-50 w-full px-6 py-6 flex items-center justify-between max-w-4xl mx-auto border-b border-white/5">
+        <a href="index.html" class="text-2xl font-black italic tracking-tighter text-white">
+            OFF<span class="text-cyan-500">in</span>
+        </a>
+        <a href="index.html" class="text-sm font-bold text-slate-400 hover:text-white flex items-center gap-2 transition-colors">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i> Voltar
+        </a>
+    </nav>
+
+    <!-- Conteúdo Principal -->
+    <main class="relative z-10 max-w-3xl mx-auto py-16 px-6">
+        <div class="mb-12 flex items-center gap-4 text-pink-500">
+            <i data-lucide="shield-alert" class="w-12 h-12"></i>
+        </div>
+
+        <article class="prose prose-invert prose-pink lg:prose-lg max-w-none">
+            <h1 class="text-4xl font-extrabold text-white mb-2 tracking-tight">Regras da Comunidade</h1>
+            <p class="text-xs text-slate-500 font-bold uppercase tracking-widest mt-0 mb-12">Tolerância Zero para Abusos | Actualizado em: 15 de Abril de 2026</p>
+
+            <p>O **OFFin** foi criado para ser uma ferramenta de diversão, suspense e elogios. O mistério deve ser excitante, não opressor. Para manter a nossa rede segura, estabelecemos diretrizes rígidas que todos os utilizadores devem seguir.</p>
+
+            <h3 class="text-pink-400">1. Proibição de Bullying e Assédio</h3>
+            <p>O anonimato não é um escudo para comportamentos tóxicos. É proibido enviar mensagens destinadas a ridicularizar, humilhar, insultar ou intimidar qualquer utilizador.</p>
+
+            <h3 class="text-pink-400">2. Discurso de Ódio e Discriminação</h3>
+            <p>Temos tolerância zero para qualquer forma de discurso de ódio. Mensagens que promovam a violência ou o ódio contra indivíduos ou grupos com base em raça, etnia, religião, deficiência, idade, nacionalidade, orientação sexual ou identidade de género resultarão em banimento imediato.</p>
+
+            <h3 class="text-pink-400">3. Conteúdo Sexual e Explícito</h3>
+            <p>O OFFin não é um lugar para partilha de conteúdo sexualmente explícito, solicitações sexuais não consensuais ou qualquer forma de material NSFW (Not Safe For Work).</p>
+
+            <div class="neon-border bg-slate-900/50 p-6 rounded-2xl my-10">
+                <h4 class="mt-0 flex items-center gap-2 text-cyan-400">
+                    <i data-lucide="camera-off" class="w-5 h-5"></i>
+                    Aviso sobre o Modo Anti-Print
+                </h4>
+                <p class="text-sm text-slate-300 leading-relaxed mb-0">
+                    O nosso sistema detecta activamente tentativas de captura de ecrã (screenshot) durante a revelação. Se o sistema detectar um "Print", a identidade será ocultada para o destinatário, mas o incidente será registado nos nossos servidores para protecção do remetente original em caso de denúncia de assédio.
+                </p>
+            </div>
+
+            <h3 class="text-pink-400">4. Segurança de Dados e Doxxing</h3>
+            <p>É proibido utilizar o sistema para partilhar informações privadas de terceiros (moradas, números de telefone, documentos) sem o devido consentimento.</p>
+
+            <h3>Como Denunciar?</h3>
+            <p>Se receber uma mensagem que viole estas regras, utilize o canal de denúncia no nosso e-mail oficial (**denuncia@offin.network**). Analisamos todos os registos de autenticação para garantir que a comunidade permaneça um ambiente seguro e divertido para todos.</p>
+        </article>
+    </main>
+
+    <footer class="text-center py-12 border-t border-white/5 text-slate-600 text-[10px] uppercase tracking-[0.2em] font-bold">
+        &copy; 2026 OFFin Network
+    </footer>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

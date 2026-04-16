@@ -52,8 +52,8 @@ import {
 } from 'lucide-react';
 
 /**
- * PROJETO OFFIN - VERSÃO DE PRODUÇÃO V15 (SECURITY PATCH - TRANSACTIONS)
- * Foco: Transações Atômicas para evitar duplicação de saldo e race conditions.
+ * PROJETO OFFIN - VERSÃO DE PRODUÇÃO V16 (OTIMIZAÇÃO DE LEITURA)
+ * Foco: Remoção de listeners globais caros. Notificações otimizadas via unreadCount.
  */
 
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
@@ -141,7 +141,6 @@ const generateStoryImage = (handle) => {
   ctx.lineWidth = 5;
   ctx.stroke();
 
-  // TEXTO ATUALIZADO E AMIGÁVEL
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 50px sans-serif';
   ctx.fillText('ME MANDE UM SEGREDO', 540, 890);
@@ -232,7 +231,6 @@ const StoreModal = ({ isOpen, onClose, user, userProfile, setToast }) => {
     if (!canClaimDaily || !user) return;
     setLoadingDaily(true);
     try {
-      // 🔒 SEGURANÇA PASSO 1: Usando Transação para evitar duplo resgate clicando rápido
       await runTransaction(db, async (transaction) => {
         const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid);
         const userDoc = await transaction.get(userRef);
@@ -366,11 +364,11 @@ const CreateLinkScreen = ({ user, referrerUid, onNext, setToast, unreadCount }) 
           handle: cleanHandle, 
           createdAt: new Date().toISOString(),
           isPermanent: !user.isAnonymous,
-          tokens: 1 
+          tokens: 1,
+          unreadCount: 0 // Inicia o contador
         });
 
         if (referrerUid && referrerUid !== user.uid) {
-          // Utiliza transação para bônus de referral
           try {
             await runTransaction(db, async (transaction) => {
               const refRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', referrerUid);
@@ -563,23 +561,40 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
       const msgId = crypto.randomUUID();
       
       try {
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', msgId), {
-          id: msgId, 
-          targetUid, 
-          senderUid: currentUser.uid, 
-          text: message.trim(), 
-          createdAt: new Date().toISOString(), 
-          isRevealed: false, 
-          status: 'sent'
-        });
+        // 🚀 OTIMIZAÇÃO: Transação atômica que cria a mensagem e já notifica o destinatário no unreadCount
+        await runTransaction(db, async (transaction) => {
+          const targetUserRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', targetUid);
+          const msgRef = doc(db, 'artifacts', appId, 'public', 'data', 'messages', msgId);
+          const idRef = doc(db, 'artifacts', appId, 'public', 'data', 'identities', msgId);
 
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'identities', msgId), {
-          senderName: finalName,
-          senderPhoto: currentUser.photoURL || ''
+          const targetUserSnap = await transaction.get(targetUserRef);
+          if (!targetUserSnap.exists()) throw "Destinatário não encontrado";
+
+          // Cria a mensagem pública (sem a identidade)
+          transaction.set(msgRef, {
+            id: msgId, 
+            targetUid, 
+            senderUid: currentUser.uid, 
+            text: message.trim(), 
+            createdAt: new Date().toISOString(), 
+            isRevealed: false, 
+            status: 'sent'
+          });
+
+          // Cria a identidade no cofre
+          transaction.set(idRef, {
+            senderName: finalName,
+            senderPhoto: currentUser.photoURL || ''
+          });
+
+          // Incrementa o contador de não lidas do destinatário (Otimização de Leituras)
+          const currentUnread = targetUserSnap.data().unreadCount || 0;
+          transaction.update(targetUserRef, { unreadCount: currentUnread + 1 });
         });
 
         setSent(true);
       } catch (err) {
+        console.error(err);
         setToast("Erro de conexão ao enviar.");
       } finally {
         setLoading(false);
@@ -642,10 +657,12 @@ const InboxScreen = ({ user, userProfile, onSelectMessage, onBack, setToast, onO
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('received');
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null); // Controle de exclusão
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   useEffect(() => {
     if (!user) return;
+    // O InbloxScreen é o único lugar que faz o onSnapshot (download da lista de mensagens).
+    // Isto garante que o utilizador só consome os seus dados se decidir realmente abrir a caixa.
     const msgRef = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
     return onSnapshot(msgRef, (snap) => {
       setMessages(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -732,6 +749,8 @@ const InboxScreen = ({ user, userProfile, onSelectMessage, onBack, setToast, onO
                   <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-full flex items-center gap-1 ${msg.isRevealed ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-pink-500/10 text-pink-400 border border-pink-500/20'}`}>
                      {msg.isRevealed ? <CheckCircle2 size={10}/> : <Lock size={10}/>}
                      {msg.isRevealed ? 'Identidade Revelada' : 'Segredo Trancado'}
+                     {/* Bolinha extra para mensagens novas (não visualizadas) */}
+                     {activeTab === 'received' && msg.status === 'sent' && <span className="ml-1 w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></span>}
                   </span>
                   
                   <div className="flex items-center gap-3">
@@ -774,6 +793,17 @@ const ViralPaywallScreen = ({ user, userProfile, message, onUnlock, setToast, on
 
   useEffect(() => { 
     const checkStatus = async () => {
+      // 🚀 OTIMIZAÇÃO DE LEITURAS: Subtrai o unreadCount assim que a pessoa vê a mensagem no Paywall
+      if (message.status === 'sent') {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', message.id), { status: 'viewed' });
+        
+        if (userProfile?.unreadCount > 0) {
+          updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid), { 
+            unreadCount: userProfile.unreadCount - 1 
+          });
+        }
+      }
+
       if (message.isRevealed && !message.senderName) {
         setIsProcessing(true);
         const idSnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'identities', message.id));
@@ -781,8 +811,6 @@ const ViralPaywallScreen = ({ user, userProfile, message, onUnlock, setToast, on
         onUnlock(idSnap.exists() ? { ...message, ...idSnap.data() } : message);
       } else if (message.isRevealed && message.senderName) {
         onUnlock(message);
-      } else if (message.status === 'sent') {
-        updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', message.id), { status: 'viewed' });
       }
     };
     checkStatus();
@@ -795,7 +823,7 @@ const ViralPaywallScreen = ({ user, userProfile, message, onUnlock, setToast, on
     }
     setIsProcessing(true);
     try {
-      // 🔒 SEGURANÇA PASSO 1: Transação Atômica para deduzir moeda e revelar
+      // Transação Atômica para deduzir moeda e revelar
       await runTransaction(db, async (transaction) => {
         const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid);
         const msgRef = doc(db, 'artifacts', appId, 'public', 'data', 'messages', message.id);
@@ -806,12 +834,10 @@ const ViralPaywallScreen = ({ user, userProfile, message, onUnlock, setToast, on
         const currentTokens = userDoc.data().tokens || 0;
         if (currentTokens < 1) throw "Saldo insuficiente";
 
-        // Faz as duas operações de uma vez só!
         transaction.update(userRef, { tokens: currentTokens - 1 });
         transaction.update(msgRef, { isRevealed: true, status: 'revealed' });
       });
       
-      // Busca a identidade apenas se a transação acima foi um sucesso
       const idSnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'identities', message.id));
       const msgWithIdentity = idSnap.exists() ? { ...message, ...idSnap.data() } : message;
 
@@ -841,7 +867,6 @@ const ViralPaywallScreen = ({ user, userProfile, message, onUnlock, setToast, on
       </div>
       
       <div className="bg-cyan-500/5 border border-cyan-500/20 p-8 rounded-3xl space-y-6 relative overflow-hidden">
-        {/* Glow Background if tokens >= 1 */}
         {tokens >= 1 && <div className="absolute inset-0 bg-cyan-500/10 blur-2xl z-0 pointer-events-none"></div>}
 
         <button onClick={onOpenStore} className="flex items-center justify-center gap-2 text-yellow-500 hover:text-yellow-400 transition-colors font-black text-lg mx-auto relative z-10 bg-[#09090b] px-4 py-2 rounded-xl border border-yellow-500/20">
@@ -923,7 +948,6 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [toastType, setToastType] = useState('error');
   const [isStoreOpen, setIsStoreOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0); // Controle de notificações
 
   const showToast = (msg, type = 'error') => {
     setToast(msg);
@@ -952,28 +976,14 @@ export default function App() {
     return onAuthStateChanged(auth, setUser);
   }, []);
 
-  // Monitora o perfil do usuário e as mensagens (para o contador)
+  // Monitora APENAS o perfil do usuário (1 única leitura de documento em vez de milhares)
   useEffect(() => {
     if (!user) return;
-    
-    // Perfil
     const unsubProfile = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid), (d) => {
       if(d.exists()) setUserProfile(d.data());
     }, (error) => console.error(error));
 
-    // Contador Global de Não Lidas
-    const msgRef = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
-    const unsubMessages = onSnapshot(msgRef, (snap) => {
-      const msgs = snap.docs.map(doc => doc.data());
-      // Filtra mensagens que são para este usuário e que ainda não foram visualizadas no paywall
-      const unread = msgs.filter(m => m.targetUid === user.uid && m.status === 'sent').length;
-      setUnreadCount(unread);
-    }, (error) => console.error(error));
-
-    return () => {
-      unsubProfile();
-      unsubMessages();
-    };
+    return () => unsubProfile();
   }, [user]);
 
   useEffect(() => {
@@ -1008,7 +1018,7 @@ export default function App() {
       </div>
 
       <div className="w-full max-w-md bg-[#18181b] min-h-screen shadow-2xl relative flex flex-col z-10 border-x border-white/5 overflow-hidden">
-        {screen === 1 && <CreateLinkScreen user={user} referrerUid={referrerUid} onNext={setScreen} setToast={showToast} unreadCount={unreadCount} />}
+        {screen === 1 && <CreateLinkScreen user={user} referrerUid={referrerUid} onNext={setScreen} setToast={showToast} unreadCount={userProfile?.unreadCount || 0} />}
         {screen === 2 && <LinkReadyScreen user={user} onNext={setScreen} />}
         {screen === 3 && targetUid && <SendSecretScreen targetUid={targetUid} user={user} onReset={() => setScreen(1)} setToast={showToast} />}
         {screen === 4 && <InboxScreen user={user} userProfile={userProfile} onBack={() => setScreen(1)} onSelectMessage={msg => { setSelectedMessage(msg); setScreen(5); }} setToast={showToast} onOpenStore={() => setIsStoreOpen(true)} />}

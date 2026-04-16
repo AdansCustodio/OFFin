@@ -8,10 +8,13 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        // Configuramos o Vite para processar os dois pontos de entrada
+        // Mapeamos cada página HTML para que o Vite as processe no build final
         main: resolve(__dirname, 'index.html'),
         app: resolve(__dirname, 'app.html'),
-      },
-    },
-  },
+        termos: resolve(__dirname, 'termos.html'),
+        privacidade: resolve(__dirname, 'privacidade.html'),
+        regras: resolve(__dirname, 'regras.html')
+      }
+    }
+  }
 })

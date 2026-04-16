@@ -37,7 +37,7 @@ import {
 
 /**
  * PROJETO OFFIN - VERSÃO DE PRODUÇÃO CORRIGIDA
- * Foco: Resiliência de Autenticação e Diagnóstico de Domínio
+ * Foco: Resiliência de Autenticação, Acessibilidade de Rolagem e UX de Input
  */
 
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
@@ -142,11 +142,13 @@ const OffinLogo = ({ scale = 1 }) => (
 // --- TELAS ---
 
 const CreateLinkScreen = ({ user, onNext, setToast }) => {
-  const [handle, setHandle] = useState('');
+  // Iniciamos com @ para facilitar
+  const [handle, setHandle] = useState('@');
   const [loading, setLoading] = useState(false);
 
   const handleCreateProfile = async () => {
-    if (!handle.trim() || !user) return;
+    // Validamos se há algo além do @
+    if (!handle.trim() || handle === '@' || !user) return;
     setLoading(true);
     try {
       const cleanHandle = handle.trim().replace('@', '');
@@ -159,23 +161,37 @@ const CreateLinkScreen = ({ user, onNext, setToast }) => {
     } finally { setLoading(false); }
   };
 
+  const onHandleChange = (e) => {
+    let val = e.target.value;
+    // Garante que sempre comece com @
+    if (!val.startsWith('@')) {
+      val = '@' + val.replace(/^@*/, '');
+    }
+    setHandle(val);
+  };
+
   return (
-    <div className="relative flex flex-col min-h-screen overflow-hidden bg-[#18181b]">
+    <div className="relative flex flex-col min-h-screen bg-[#18181b] overflow-y-auto">
       <div className="absolute top-[-15%] left-[-20%] w-[70%] h-[70%] bg-pink-600/30 blur-[120px] rounded-full pointer-events-none mix-blend-screen" />
       <div className="absolute inset-0 pointer-events-none opacity-40 mix-blend-overlay" style={{ backgroundImage: `repeating-linear-gradient(105deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 4px)` }} />
       <div className="relative z-10 flex flex-col min-h-screen p-8 animate-in fade-in duration-500">
         <header className="pt-6 pb-2 flex justify-center"><OffinLogo scale={0.8} /></header>
-        <main className="flex-1 flex flex-col items-center justify-center text-center space-y-10">
+        <main className="flex-1 flex flex-col items-center justify-center text-center space-y-10 py-10">
           <div className="space-y-4">
             <h2 className="text-4xl font-extrabold text-white leading-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">Receba segredos <br /> anônimos 👀</h2>
             <p className="text-lg text-slate-300 font-medium px-4">Descubra o que pensam de você sem que ninguém saiba quem mandou.</p>
           </div>
           <div className="w-full max-w-xs space-y-4">
             <div className="relative shadow-[0_10px_30px_rgba(0,0,0,0.3)] rounded-2xl">
-              <span className="absolute left-4 top-4 text-slate-400 font-bold">@</span>
-              <input type="text" placeholder="seu_instagram" value={handle} onChange={(e) => setHandle(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700 rounded-2xl py-4 pl-10 pr-4 text-white font-bold focus:outline-none focus:ring-2 focus:ring-cyan-500/50 backdrop-blur-md placeholder:text-slate-500" />
+              <input 
+                type="text" 
+                placeholder="@seu_instagram" 
+                value={handle} 
+                onChange={onHandleChange}
+                className="w-full bg-slate-900/60 border border-slate-700 rounded-2xl py-4 px-6 text-white font-bold focus:outline-none focus:ring-2 focus:ring-cyan-500/50 backdrop-blur-md placeholder:text-slate-500" 
+              />
             </div>
-            <Button onClick={handleCreateProfile} loading={loading} disabled={!handle || !user}>Criar meu link</Button>
+            <Button onClick={handleCreateProfile} loading={loading} disabled={!handle || handle === '@' || !user}>Criar meu link</Button>
             <Button onClick={() => onNext(4)} variant="ghost" className="!text-cyan-100 opacity-80">Já tenho link (Ver Caixa)</Button>
           </div>
         </main>
@@ -202,9 +218,9 @@ const LinkReadyScreen = ({ user, onNext }) => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#18181b] animate-in slide-in-from-right duration-300">
+    <div className="flex flex-col min-h-screen bg-[#18181b] animate-in slide-in-from-right duration-300 overflow-y-auto">
       <header className="pt-4 pb-2 flex justify-center"><OffinLogo scale={0.65} /></header>
-      <main className="flex-1 flex flex-col items-center justify-start p-6 space-y-6 overflow-y-auto">
+      <main className="flex-1 flex flex-col items-center justify-start p-6 space-y-6 pb-12">
         <div className="text-center space-y-2">
           <h2 className="text-2xl font-extrabold text-white">A armadilha tá pronta!</h2>
           <p className="text-slate-400 font-medium text-sm">Siga os 2 passos abaixo para postar no Instagram.</p>
@@ -307,7 +323,7 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
   };
 
   if (sent) return (
-    <div className="flex flex-col min-h-screen bg-slate-50 items-center justify-center p-8 text-center animate-in zoom-in">
+    <div className="flex flex-col min-h-screen bg-slate-50 items-center justify-center p-8 text-center animate-in zoom-in overflow-y-auto">
       <CheckCircle2 size={64} className="text-emerald-500 mx-auto mb-4" />
       <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Segredo enviado! 🤫</h2>
       <p className="text-slate-500">@{targetHandle} só vai descobrir quem é você se tiver coragem de postar.</p>
@@ -316,9 +332,9 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
   );
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-900 p-8 animate-in fade-in">
+    <div className="flex flex-col min-h-screen bg-slate-900 overflow-y-auto">
       <header className="pt-4 pb-2 flex justify-center"><OffinLogo scale={0.65} /></header>
-      <main className="flex-1 flex flex-col items-center justify-center text-center space-y-8 mt-[-20px]">
+      <main className="flex-1 flex flex-col items-center justify-center text-center space-y-8 p-8">
         <h2 className="text-3xl font-extrabold text-white leading-tight">Mande um segredo para @{targetHandle}</h2>
         <div className="w-full max-w-xs space-y-4">
           <textarea placeholder="Escreva algo curioso..." value={message} onChange={(e) => setMessage(e.target.value)} maxLength={150} className="w-full h-32 bg-slate-800 border border-slate-700 rounded-2xl p-4 text-white resize-none focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all" />
@@ -377,13 +393,13 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50">
+    <div className="flex flex-col min-h-screen bg-slate-50 overflow-y-auto">
       <header className="p-6 bg-white border-b border-slate-100 flex items-center justify-between sticky top-0 z-10">
         <button onClick={onBack} className="text-slate-400 p-2"><ChevronLeft /></button>
         <h1 className="font-bold text-slate-800 text-lg">Minha Caixa</h1>
         <div className="w-6" />
       </header>
-      <main className="flex-1 p-6 space-y-6">
+      <main className="flex-1 p-6 space-y-6 pb-12">
         {user?.isAnonymous && (
           <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-3xl flex items-center justify-between gap-4">
             <div className="flex-1">
@@ -427,7 +443,7 @@ const ViralPaywallScreen = ({ user, message, onUnlock, onBack }) => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-900 text-white p-8 animate-in slide-in-from-bottom text-center justify-center space-y-12">
+    <div className="flex flex-col min-h-screen bg-slate-900 text-white p-8 animate-in slide-in-from-bottom text-center justify-center space-y-12 overflow-y-auto">
       <Lock size={64} className="text-pink-500 mx-auto animate-pulse" />
       <div className="space-y-4">
         <h2 className="text-3xl font-black uppercase tracking-tighter italic">Quem mandou?</h2>
@@ -448,8 +464,8 @@ const ViralPaywallScreen = ({ user, message, onUnlock, onBack }) => {
 const RevealScreen = ({ message, onBack }) => {
   const [isHolding, setIsHolding] = useState(false);
   return (
-    <div className="flex flex-col min-h-screen bg-black p-8 animate-in zoom-in duration-300 text-center justify-center space-y-12">
-      <header className="absolute top-8 left-8"><button onClick={onBack} className="p-3 bg-slate-900 rounded-full text-slate-400"><ChevronLeft size={24} /></button></header>
+    <div className="flex flex-col min-h-screen bg-black p-8 animate-in zoom-in duration-300 text-center justify-center space-y-12 overflow-y-auto">
+      <header className="absolute top-8 left-8 z-20"><button onClick={onBack} className="p-3 bg-slate-900 rounded-full text-slate-400"><ChevronLeft size={24} /></button></header>
       <div className="bg-slate-900 rounded-[3.5rem] p-10 relative shadow-2xl border border-slate-800 min-h-[400px] flex flex-col justify-center select-none touch-none">
         {isHolding ? (
           <div className="animate-in fade-in zoom-in duration-200 space-y-6">
@@ -537,8 +553,8 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-100 flex justify-center font-sans antialiased">
-      <div className="w-full max-w-md bg-white min-h-screen shadow-2xl relative overflow-hidden flex flex-col">
+    <div className="min-h-screen bg-slate-100 flex justify-center font-sans antialiased overflow-y-auto">
+      <div className="w-full max-w-md bg-white min-h-screen shadow-2xl relative flex flex-col">
         {screen === 1 && <CreateLinkScreen user={user} onNext={setScreen} setToast={showToast} />}
         {screen === 2 && <LinkReadyScreen user={user} onNext={setScreen} />}
         {screen === 3 && targetUid && <SendSecretScreen targetUid={targetUid} user={user} onReset={() => setScreen(1)} setToast={showToast} />}

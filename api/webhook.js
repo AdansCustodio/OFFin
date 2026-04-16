@@ -1,5 +1,6 @@
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import admin from 'firebase-admin';
+import crypto from 'crypto';
 
 // Inicialização do Firebase Admin (Privilégios de Servidor)
 if (!admin.apps.length) {
@@ -22,34 +23,58 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. O Mercado Pago envia o ID de várias formas. Vamos tentar todas:
-    // Formato 1 (Novo): req.body.data.id
-    // Formato 2 (Antigo/Teste): req.query.id
-    // Formato 3: req.body.id
+    // 1. Extração de IDs e Tipos
     const paymentId = req.body?.data?.id || req.query?.id || req.body?.id;
-    const type = req.body?.type || req.query?.topic || req.body?.topic;
+    const type = req.body?.type || req.query?.topic || req.body?.topic || req.body?.action;
 
-    console.log(`Recebendo notificação: Tipo=${type}, ID=${paymentId}`);
+    // --- INÍCIO DA VALIDAÇÃO DE SEGURANÇA (x-signature) ---
+    const signatureHeader = req.headers['x-signature'];
+    const requestId = req.headers['x-request-id'];
+    const webhookSecret = process.env.MP_WEBHOOK_SECRET;
 
-    // Se não tiver ID, é apenas um teste de conexão do Mercado Pago. Respondemos 200 e saímos.
+    if (signatureHeader && requestId && webhookSecret && paymentId) {
+      // Extrair ts e v1 do header x-signature
+      const parts = signatureHeader.split(',');
+      const ts = parts.find(p => p.startsWith('ts='))?.split('=')[1];
+      const v1 = parts.find(p => p.startsWith('v1='))?.split('=')[1];
+
+      if (ts && v1) {
+        // Construir o manifesto conforme template do Mercado Pago:
+        // id:[data.id_url];request-id:[x-request-id_header];ts:[ts_header];
+        const manifest = `id:${paymentId};request-id:${requestId};ts:${ts};`;
+        
+        // Gerar a assinatura HMAC SHA256 para comparação
+        const hmac = crypto.createHmac('sha256', webhookSecret);
+        hmac.update(manifest);
+        const checkHash = hmac.digest('hex');
+
+        if (checkHash !== v1) {
+          console.error('[FRAUDE DETECTADA] Assinatura inválida para o pagamento:', paymentId);
+          return res.status(401).json({ error: 'Invalid signature' });
+        }
+      }
+    }
+    // --- FIM DA VALIDAÇÃO DE SEGURANÇA ---
+
+    console.log(`Recebendo notificação validada: Tipo=${type}, ID=${paymentId}`);
+
+    // Se não tiver ID, é apenas um teste de conexão do Mercado Pago.
     if (!paymentId) {
       return res.status(200).send('OK - Test Connection');
     }
 
-    // 2. Só processamos se o tipo for pagamento
-    if (type === 'payment' || type === 'payment_methods') {
+    // 2. Processamento do pagamento aprovado
+    if (type === 'payment' || type === 'payment.created' || type === 'payment.updated') {
       const accessToken = process.env.MP_ACCESS_TOKEN;
       const client = new MercadoPagoConfig({ accessToken: accessToken });
       const payment = new Payment(client);
 
-      // Buscamos os dados reais do pagamento no Mercado Pago
       const paymentData = await payment.get({ id: paymentId });
 
       if (paymentData.status === 'approved') {
         const userId = paymentData.metadata?.user_id;
         const packageId = paymentData.metadata?.package_id;
         
-        // Use o seu ID de projeto real
         const appId = "offinn-89849"; 
 
         if (userId && packageId) {
@@ -63,17 +88,15 @@ export default async function handler(req, res) {
               t.update(userRef, { tokens: currentTokens + tokensToAdd });
             }
           });
-          console.log(`[SUCESSO] ${packageId} moedas para o user ${userId}`);
+          console.log(`[SUCESSO] ${packageId} moedas creditadas ao user ${userId}`);
         }
       }
     }
 
-    // Sempre retornar 200 para o Mercado Pago
     return res.status(200).send('OK');
 
   } catch (error) {
     console.error('Erro no Webhook:', error);
-    // Retornamos 200 mesmo no erro para evitar que o MP fique tentando reenviar infinitamente
-    return res.status(200).send('Handled');
+    return res.status(200).send('Processed with hidden errors');
   }
 }

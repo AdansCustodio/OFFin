@@ -37,7 +37,7 @@ import {
 
 /**
  * PROJETO OFFIN - VERSÃO DE PRODUÇÃO CORRIGIDA
- * Foco: Resiliência de Autenticação, Acessibilidade de Rolagem e URLs Dinâmicas
+ * Foco: Resiliência de Autenticação, Tratamento de Popup Bloqueado e UX
  */
 
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
@@ -58,12 +58,9 @@ const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : "offinn-89849"; 
 
 // --- DETECÇÃO DINÂMICA DE URL ---
-// Usamos o endereço atual do navegador para evitar erros de 404 por domínios fixos
 const getCurrentAppUrl = () => {
   const origin = window.location.origin;
   const path = window.location.pathname;
-  // Se já estivermos no app ou app.html, mantemos a base. 
-  // Caso contrário (estamos na index), forçamos o caminho para app.html
   if (path.includes('app.html') || path === '/app') {
     return origin + path;
   }
@@ -160,6 +157,7 @@ const CreateLinkScreen = ({ user, onNext, setToast }) => {
 
   const handleCreateProfile = async () => {
     if (!handle.trim() || handle === '@' || !user) return;
+    setHandle(prev => prev.trim());
     setLoading(true);
     try {
       const cleanHandle = handle.trim().replace('@', '');
@@ -311,7 +309,10 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
           const result = await linkWithPopup(user, provider);
           await sendToDB(result.user);
         } catch (linkErr) {
-          if (linkErr.code === 'auth/unauthorized-domain') {
+          if (linkErr.code === 'auth/popup-blocked') {
+            setToast("O popup foi bloqueado. Tente clicar no botão novamente ou ative popups no navegador.");
+            setLoading(false);
+          } else if (linkErr.code === 'auth/unauthorized-domain') {
             const currentDomain = window.location.hostname;
             setToast(`Adicione "${currentDomain}" no Console do Firebase.`);
             setLoading(false);
@@ -322,7 +323,9 @@ const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
         }
       } catch (error) { 
         setLoading(false); 
-        if (error.code === 'auth/unauthorized-domain') {
+        if (error.code === 'auth/popup-blocked') {
+          setToast("Janela bloqueada pelo navegador. Tente clicar novamente.");
+        } else if (error.code === 'auth/unauthorized-domain') {
           setToast(`Adicione "${window.location.hostname}" aos domínios autorizados no Firebase.`);
         } else {
           setToast(`Erro Google: ${error.code}`);
@@ -385,7 +388,9 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
       try {
         await linkWithPopup(user, provider);
       } catch (linkErr) {
-        if (linkErr.code === 'auth/unauthorized-domain') {
+        if (linkErr.code === 'auth/popup-blocked') {
+          setToast("Popup bloqueado. Tente clicar novamente ou verifique as definições do navegador.");
+        } else if (linkErr.code === 'auth/unauthorized-domain') {
           setToast(`Adicione "${window.location.hostname}" no Firebase.`);
         } else {
           await signInWithPopup(auth, provider);
@@ -393,7 +398,9 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
       }
       setToast("Conta salva com sucesso!", "success");
     } catch (e) { 
-      if (e.code === 'auth/unauthorized-domain') {
+      if (e.code === 'auth/popup-blocked') {
+        setToast("Bloqueio de popup. Tente clicar novamente.");
+      } else if (e.code === 'auth/unauthorized-domain') {
         setToast(`Adicione "${window.location.hostname}" aos domínios autorizados no Firebase.`);
       } else {
         setToast(`Erro ao salvar: ${e.code}`);

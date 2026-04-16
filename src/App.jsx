@@ -62,8 +62,12 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : "offinn-89849";
 const getCurrentAppUrl = () => {
   const origin = window.location.origin;
   const path = window.location.pathname;
-  // Se já estivermos no app.html, mantemos. Caso contrário, apontamos para ele.
-  return path.includes('app.html') ? origin + path : origin + '/app.html';
+  // Se já estivermos no app ou app.html, mantemos a base. 
+  // Caso contrário (estamos na index), forçamos o caminho para app.html
+  if (path.includes('app.html') || path === '/app') {
+    return origin + path;
+  }
+  return origin + '/app.html';
 };
 
 const APP_URL = getCurrentAppUrl();
@@ -420,7 +424,7 @@ const InboxScreen = ({ user, onSelectMessage, onBack, setToast }) => {
           messages.map(msg => (
             <div key={msg.id} onClick={() => onSelectMessage(msg)} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 cursor-pointer active:scale-95 transition-all">
               <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${msg.isRevealed ? 'bg-emerald-100 text-emerald-600' : 'bg-pink-100 text-pink-600'}`}>
-                {m.isRevealed ? 'Revelado' : 'Trancado'}
+                {msg.isRevealed ? 'Revelado' : 'Trancado'}
               </span>
               <p className="mt-4 italic text-slate-700 font-serif text-lg leading-relaxed">"{msg.text}"</p>
               {!msg.isRevealed && <p className="mt-4 text-xs text-cyan-500 font-black flex items-center gap-1 uppercase tracking-wider">Revelar identidade <ArrowRight size={14} /></p>}

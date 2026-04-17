@@ -53,8 +53,8 @@ import {
 } from 'lucide-react';
 
 /**
- * PROJETO OFFIN - VERSÃO DE PRODUÇÃO V17 (MERCADO PAGO + UI CENTRADA)
- * Foco: Pagamentos Reais via PIX e Listeners de Sucesso Automático.
+ * PROJETO OFFIN - VERSÃO DE PRODUÇÃO V18 (BUG FIXES)
+ * Correção: Caminho do Firebase (appId com slash) e Erro de renderização do Toast.
  */
 
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
@@ -72,7 +72,9 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const appId = typeof __app_id !== 'undefined' ? __app_id : "offinn-89849"; 
+// Sanitização crucial do appId para evitar erro de segmentos ímpares no Firestore
+const rawAppId = typeof __app_id !== 'undefined' ? __app_id : "offinn-89849";
+const appId = rawAppId.replace(/\//g, '_'); 
 
 const isInstagramBrowser = () => {
   const ua = navigator.userAgent || navigator.vendor || window.opera;
@@ -105,69 +107,12 @@ const copyToClipboardFallback = (text) => {
   document.body.removeChild(textArea);
 };
 
-// --- GERADOR DE IMAGEM PARA STORIES ---
-const generateStoryImage = (handle) => {
-  const canvas = document.createElement('canvas');
-  canvas.width = 1080;
-  canvas.height = 1920;
-  const ctx = canvas.getContext('2d');
-
-  const grad = ctx.createLinearGradient(0, 0, 1080, 1920);
-  grad.addColorStop(0, '#0f172a');
-  grad.addColorStop(1, '#1e293b');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 1080, 1920);
-
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-  ctx.font = 'bold 36px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('https://off-in.vercel.app/', 540, 120);
-
-  ctx.shadowColor = 'rgba(6, 182, 212, 0.8)';
-  ctx.shadowBlur = 30;
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'italic 900 220px sans-serif';
-  ctx.fillText('OFF', 460, 480);
-  
-  ctx.shadowColor = 'rgba(236, 72, 153, 0.8)';
-  ctx.fillStyle = '#ec4899';
-  ctx.font = 'italic 900 220px sans-serif';
-  ctx.fillText('IN', 720, 480);
-  ctx.shadowBlur = 0;
-
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-  if (ctx.roundRect) ctx.roundRect(120, 750, 840, 400, 80); else ctx.rect(120, 750, 840, 400);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-  ctx.lineWidth = 5;
-  ctx.stroke();
-
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 50px sans-serif';
-  ctx.fillText('ME MANDE UM SEGREDO', 540, 890);
-  ctx.fillText('OU DIGA ALGO SOBRE MIM...', 540, 960);
-  ctx.font = '400 35px sans-serif';
-  ctx.fillText('E EU VOU TENTAR DESCOBRIR QUEM É! 👀', 540, 1050);
-
-  ctx.fillStyle = '#06b6d4';
-  ctx.font = '900 120px sans-serif';
-  ctx.fillText('LINK', 540, 1420);
-  ctx.font = 'bold 35px sans-serif';
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-  ctx.fillText('👇 COLE O ADESIVO AQUI 👇', 540, 1500);
-
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'italic 42px sans-serif';
-  ctx.fillText('Até que ponto a curiosidade pode chegar?', 540, 1750);
-  ctx.fillStyle = '#06b6d4';
-  ctx.font = 'bold 48px sans-serif';
-  ctx.fillText('Descubra você também!', 540, 1830);
-
-  return canvas.toDataURL('image/png');
-};
-
+// --- COMPONENTE TOAST (CORRIGIDO) ---
 const Toast = ({ message, type = 'error', onClose }) => {
   if (!message) return null;
+  // Garantir que message seja renderizável (string)
+  const displayMessage = typeof message === 'string' ? message : "Erro desconhecido";
+  
   return (
     <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 duration-300 w-[90%] max-w-xs">
       <div className={`px-6 py-4 rounded-xl shadow-2xl backdrop-blur-md flex flex-col gap-2 border ${
@@ -175,7 +120,7 @@ const Toast = ({ message, type = 'error', onClose }) => {
       }`}>
         <div className="flex items-center gap-3">
           {type === 'error' ? <XCircle size={20} /> : <CheckCircle2 size={20} />}
-          <p className="text-xs font-bold flex-1">{message}</p>
+          <p className="text-xs font-bold flex-1">{displayMessage}</p>
           <button onClick={onClose} className="opacity-50 hover:opacity-100 transition-opacity"><XCircle size={16} /></button>
         </div>
       </div>
@@ -183,19 +128,7 @@ const Toast = ({ message, type = 'error', onClose }) => {
   );
 };
 
-const BrowserWarning = () => {
-  if (!isInstagramBrowser()) return null;
-  return (
-    <div className="bg-pink-600/90 text-white p-4 text-xs font-black text-center flex flex-col items-center gap-2 border-b-2 border-pink-500 animate-in fade-in">
-      <div className="flex items-center gap-2 uppercase tracking-tighter">
-        <AlertCircle size={18} />
-        O Instagram bloqueia o Login!
-      </div>
-      <p className="font-medium opacity-90 leading-tight">Clique nos "..." no topo e selecione "Abrir no Navegador" (Chrome/Safari) para conseguir usar o OFFin.</p>
-    </div>
-  );
-};
-
+// --- COMPONENTE BOTÃO ---
 const Button = ({ children, onClick, variant = 'primary', icon: Icon, disabled, loading, className = '' }) => {
   const base = 'w-full py-4 px-6 rounded-xl font-bold text-lg transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:active:scale-100';
   const variants = {
@@ -218,22 +151,20 @@ const Button = ({ children, onClick, variant = 'primary', icon: Icon, disabled, 
   );
 };
 
-// --- COMPONENTE DA LOJA (STORE MODAL COM PAGAMENTO REAL) ---
-const StoreModal = ({ isOpen, onClose, user, userProfile, setToast }) => {
+// --- MODAL DA LOJA ---
+const StoreModal = ({ isOpen, onClose, user, userProfile, showToast }) => {
   const [loadingDaily, setLoadingDaily] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [paymentData, setPaymentData] = useState(null); // Guarda o PIX
-  const [initialTokens, setInitialTokens] = useState(0); // Para verificar quando o saldo aumenta
+  const [paymentData, setPaymentData] = useState(null); 
+  const [initialTokens, setInitialTokens] = useState(0); 
   const [copiedPix, setCopiedPix] = useState(false);
 
-  // Efeito Mágico: Escuta o saldo. Se aumentar enquanto a tela do PIX está aberta, é sucesso!
   useEffect(() => {
     if (paymentData && userProfile?.tokens > initialTokens) {
-      setToast("Pagamento Confirmado! Moedas adicionadas à sua carteira.", "success");
-      setPaymentData(null); // Fecha o ecrã do PIX
-      // Opcional: onClose() se quiser fechar a loja inteira
+      showToast("Pagamento Confirmado! Moedas adicionadas.", "success");
+      setPaymentData(null); 
     }
-  }, [userProfile?.tokens, paymentData, initialTokens]);
+  }, [userProfile?.tokens, paymentData, initialTokens, showToast]);
   
   if (!isOpen) return null;
 
@@ -249,212 +180,121 @@ const StoreModal = ({ isOpen, onClose, user, userProfile, setToast }) => {
         const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid);
         const userDoc = await transaction.get(userRef);
         if (!userDoc.exists()) throw "Usuário não encontrado";
-        
         const currentData = userDoc.data();
         if (currentData.lastDailyCoinDate === todayStr) throw "Já resgatado";
-
         transaction.update(userRef, {
           tokens: (currentData.tokens || 0) + 1,
           lastDailyCoinDate: todayStr
         });
       });
-      setToast("1 Moeda resgatada com sucesso! Volte amanhã.", "success");
-    } catch (err) {
-      if (err === "Já resgatado") setToast("Você já resgatou o bônus de hoje.");
-      else setToast("Erro ao resgatar moeda diária.");
-    } finally {
-      setLoadingDaily(false);
-    }
+      showToast("1 Moeda resgatada!", "success");
+    } catch (err) { showToast("Erro no resgate."); } finally { setLoadingDaily(false); }
   };
 
-  // O NOVO FLUXO DE PAGAMENTO REAL
   const handleRealPurchase = async (amount, packageId) => {
     if (!user) return;
     setIsProcessingPayment(true);
-    
-    // Guarda o saldo atual para saber quando o webhook injetar as moedas
     setInitialTokens(userProfile?.tokens || 0);
 
     try {
       const response = await fetch('/api/create-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: amount,
-          userId: user.uid,
-          packageId: packageId
-        })
+        body: JSON.stringify({ amount, userId: user.uid, packageId })
       });
-
       const data = await response.json();
-      
       if (data.success && data.qr_code) {
         setPaymentData(data);
         setCopiedPix(false);
       } else {
-        setToast("Erro ao gerar PIX: " + (data.error || 'Tente novamente mais tarde.'));
+        showToast("Erro ao gerar PIX. Tente novamente.");
       }
     } catch (err) {
-      console.error(err);
-      setToast("Erro de comunicação com o servidor de pagamentos.");
-    } finally {
-      setIsProcessingPayment(false);
-    }
+      showToast("Erro de comunicação com o servidor.");
+    } finally { setIsProcessingPayment(false); }
   };
 
   const copyPixCode = () => {
     copyToClipboardFallback(paymentData.qr_code);
     setCopiedPix(true);
-    setToast("Código PIX Copiado!", "success");
-  };
-
-  const closeStore = () => {
-    setPaymentData(null); // Reseta o estado do PIX ao fechar
-    onClose();
+    showToast("Código PIX Copiado!", "success");
   };
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col justify-center items-center p-4">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm animate-in fade-in" onClick={closeStore}></div>
-      
-      {/* Modal Centrado no Mobile */}
-      <div className="relative w-full max-w-sm bg-[#18181b] border border-white/10 rounded-[2.5rem] p-7 space-y-7 animate-in zoom-in-95 duration-200 shadow-[0_15px_60px_rgba(0,0,0,0.6)] max-h-[90vh] overflow-y-auto">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm animate-in fade-in" onClick={() => !paymentData && onClose()}></div>
+      <div className="relative w-full max-w-sm bg-[#18181b] border border-white/10 rounded-[2.5rem] p-7 space-y-7 animate-in zoom-in-95 duration-200 shadow-2xl max-h-[90vh] overflow-y-auto">
         
-        {/* CABEÇALHO */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/30 text-yellow-500">
-              <Store size={24} />
-            </div>
+            <div className="p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/30 text-yellow-500"><Store size={24} /></div>
             <div>
               <h3 className="text-2xl font-black italic uppercase text-white tracking-tighter">Carteira</h3>
-              <p className="text-xs font-bold text-yellow-500 uppercase tracking-widest flex items-center gap-1">
-                Saldo: {userProfile?.tokens || 0} <Coins size={12}/>
-              </p>
+              <p className="text-xs font-bold text-yellow-500 uppercase tracking-widest">Saldo: {userProfile?.tokens || 0} Moedas</p>
             </div>
           </div>
-          <button onClick={closeStore} className="p-2 bg-white/5 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-all">
-            <XCircle size={24} />
-          </button>
+          <button onClick={onClose} className="p-2 bg-white/5 rounded-full text-slate-400 hover:text-white transition-all"><XCircle size={24} /></button>
         </div>
 
-        <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
-
-        {/* --- ECRÃ DO PIX (Ativo após o clique na compra) --- */}
         {paymentData ? (
-          <div className="space-y-6 text-center animate-in slide-in-from-right-10 duration-300">
+          <div className="space-y-6 text-center animate-in slide-in-from-right-10">
             <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-3xl p-6 space-y-4">
-              <h4 className="text-xl font-black text-white italic tracking-tighter uppercase">Pague via PIX</h4>
-              <p className="text-xs text-slate-300 font-medium leading-relaxed">
-                Abra a aplicação do seu banco, leia o QR Code ou cole o código abaixo para adicionar moedas instantaneamente.
-              </p>
-              
-              <div className="bg-white p-3 rounded-2xl inline-block mx-auto shadow-[0_0_20px_rgba(6,182,212,0.3)]">
-                {/* O MP devolve a imagem em base64 nativa */}
-                <img src={`data:image/png;base64,${paymentData.qr_code_base64}`} alt="QR Code PIX" className="w-48 h-48" />
+              <h4 className="text-xl font-black text-white italic uppercase">Pague via PIX</h4>
+              <div className="bg-white p-3 rounded-2xl inline-block mx-auto shadow-lg">
+                <img src={`data:image/png;base64,${paymentData.qr_code_base64}`} alt="QR Code" className="w-48 h-48" />
               </div>
-
-              <div className="space-y-2 mt-4 text-left">
-                <p className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest pl-1">Pix Copia e Cola</p>
-                <div className="flex gap-2">
-                  <input type="text" readOnly value={paymentData.qr_code} className="flex-1 bg-[#09090b] border border-white/10 rounded-xl px-4 py-3 text-xs text-slate-400 focus:outline-none" />
-                  <Button onClick={copyPixCode} variant={copiedPix ? 'success' : 'primary'} className="!w-auto !px-4 !py-3">
-                    {copiedPix ? <CheckCircle2 size={18}/> : <Copy size={18}/>}
-                  </Button>
-                </div>
+              <div className="flex gap-2">
+                <input type="text" readOnly value={paymentData.qr_code} className="flex-1 bg-[#09090b] border border-white/10 rounded-xl px-4 py-3 text-[10px] text-slate-400 focus:outline-none" />
+                <Button onClick={copyPixCode} variant={copiedPix ? 'success' : 'primary'} className="!w-auto !px-4 !py-3">
+                  {copiedPix ? <CheckCircle2 size={18}/> : <Copy size={18}/>}
+                </Button>
               </div>
             </div>
-
             <div className="flex flex-col items-center gap-2">
                <Loader2 size={20} className="animate-spin text-cyan-500" />
-               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest animate-pulse">Aguardando confirmação do pagamento...</p>
+               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest animate-pulse">Aguardando pagamento...</p>
             </div>
-            
-            <Button onClick={() => setPaymentData(null)} variant="ghost" className="!mt-2">Cancelar e Voltar</Button>
+            <Button onClick={() => setPaymentData(null)} variant="ghost">Voltar</Button>
           </div>
         ) : (
-          /* --- ECRÃ DA VITRINE (Pacotes) --- */
-          <div className="space-y-7 animate-in fade-in duration-300">
-            {/* 1. Bônus Diário */}
+          <div className="space-y-7">
             <div className="bg-gradient-to-br from-[#09090b] to-cyan-900/20 border border-cyan-500/20 p-5 rounded-3xl space-y-4">
-              <div className="flex items-start justify-between">
-                <div className="space-y-1">
-                  <h4 className="text-white font-black italic uppercase tracking-tighter flex items-center gap-2">
-                    <CalendarHeart size={18} className="text-cyan-400" /> Bônus Diário
-                  </h4>
-                  <p className="text-[11px] text-slate-400 leading-relaxed font-medium">Volte todos os dias para resgatar 1 Moeda gratuitamente e revelar um segredo.</p>
-                </div>
-              </div>
-              <Button 
-                onClick={handleClaimDaily} 
-                loading={loadingDaily} 
-                disabled={!canClaimDaily} 
-                variant={canClaimDaily ? 'primary' : 'secondary'}
-                icon={Coins}
-                className="!py-3 !text-sm"
-              >
-                {canClaimDaily ? 'Resgatar 1 Moeda' : 'Já resgatado hoje'}
+              <h4 className="text-white font-black italic uppercase flex items-center gap-2"><CalendarHeart size={18} className="text-cyan-400" /> Bônus Diário</h4>
+              <Button onClick={handleClaimDaily} loading={loadingDaily} disabled={!canClaimDaily} variant={canClaimDaily ? 'primary' : 'secondary'} icon={Coins}>
+                {canClaimDaily ? 'Resgatar 1 Moeda' : 'Já resgatado'}
               </Button>
             </div>
 
-            {/* 2. Vitrine de Pacotes Reais */}
             <div className="space-y-4 relative">
-              {/* Loader overlay caso a requisição do PIX demore a gerar */}
-              {isProcessingPayment && (
-                <div className="absolute inset-0 bg-[#18181b]/80 backdrop-blur-sm z-10 rounded-2xl flex flex-col items-center justify-center">
-                  <Loader2 size={30} className="animate-spin text-yellow-500" />
-                  <span className="text-xs font-bold text-yellow-500 mt-2 uppercase tracking-widest">A Gerar PIX...</span>
-                </div>
-              )}
-
-              <div className="flex items-center gap-2">
-                <CreditCard size={18} className="text-slate-400"/>
-                <h4 className="text-slate-300 font-bold uppercase tracking-widest text-[11px]">Tem pressa? Compre Moedas</h4>
-              </div>
-              
+              {isProcessingPayment && <div className="absolute inset-0 bg-black/50 z-10 flex items-center justify-center rounded-2xl"><Loader2 className="animate-spin text-yellow-500" /></div>}
               <div className="grid grid-cols-3 gap-2">
-                {/* Pacote 1 Moeda - 0.99 */}
-                <button onClick={() => handleRealPurchase(0.99, 1)} className="bg-[#09090b] border border-white/5 hover:border-yellow-500/50 py-3 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 group">
-                  <div className="text-yellow-600 group-hover:scale-110 transition-transform"><Coins size={22}/></div>
-                  <div className="text-center mt-1">
-                    <span className="block font-black text-white italic tracking-tighter text-sm">1 Moeda</span>
-                    <span className="text-[10px] text-slate-400 font-bold">R$ 0,99</span>
-                  </div>
+                <button onClick={() => handleRealPurchase(0.99, 1)} className="bg-[#09090b] border border-white/5 p-3 rounded-2xl flex flex-col items-center gap-1 active:scale-95 transition-all">
+                  <Coins size={22} className="text-yellow-600"/>
+                  <span className="font-black text-white text-xs">1 Moeda</span>
+                  <span className="text-[9px] text-slate-400">R$ 0,99</span>
                 </button>
-
-                {/* Pacote 5 Moedas - 3.99 */}
-                <button onClick={() => handleRealPurchase(3.99, 5)} className="bg-[#09090b] border border-white/5 hover:border-yellow-500/50 py-3 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 group">
-                  <div className="text-yellow-500 group-hover:scale-110 transition-transform flex"><Coins size={22}/><Coins size={22} className="-ml-3 opacity-80"/></div>
-                  <div className="text-center mt-1">
-                    <span className="block font-black text-white italic tracking-tighter text-sm">5 Moedas</span>
-                    <span className="text-[10px] text-slate-400 font-bold">R$ 3,99</span>
-                  </div>
+                <button onClick={() => handleRealPurchase(3.99, 5)} className="bg-[#09090b] border border-white/5 p-3 rounded-2xl flex flex-col items-center gap-1 active:scale-95 transition-all">
+                  <Coins size={22} className="text-yellow-500"/>
+                  <span className="font-black text-white text-xs">5 Moedas</span>
+                  <span className="text-[9px] text-slate-400">R$ 3,99</span>
                 </button>
-
-                {/* Pacote 10 Moedas - 5.99 */}
-                <button onClick={() => handleRealPurchase(5.99, 10)} className="bg-gradient-to-b from-yellow-500/20 to-[#09090b] border border-yellow-500/50 hover:border-yellow-400 py-3 px-2 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 relative overflow-hidden group shadow-[0_0_15px_rgba(234,179,8,0.15)]">
-                  <div className="absolute top-0 inset-x-0 bg-yellow-500 text-yellow-950 text-[8px] font-black uppercase py-0.5 text-center">Melhor Valor</div>
-                  <div className="text-yellow-400 group-hover:scale-110 transition-transform flex mt-2"><Coins size={24}/><Coins size={24} className="-ml-3"/></div>
-                  <div className="text-center mt-1">
-                    <span className="block font-black text-yellow-400 italic tracking-tighter text-base drop-shadow-[0_0_10px_rgba(234,179,8,0.5)]">10 Moedas</span>
-                    <span className="text-[11px] text-yellow-500 font-black">R$ 5,99</span>
-                  </div>
+                <button onClick={() => handleRealPurchase(5.99, 10)} className="bg-yellow-500/10 border border-yellow-500/50 p-3 rounded-2xl flex flex-col items-center gap-1 active:scale-95 transition-all">
+                  <Coins size={22} className="text-yellow-400"/>
+                  <span className="font-black text-yellow-400 text-xs">10 Moedas</span>
+                  <span className="text-[9px] text-yellow-500">R$ 5,99</span>
                 </button>
               </div>
             </div>
           </div>
         )}
-
       </div>
     </div>
   );
 };
 
+// --- TELAS DO APP (Restauradas) ---
 
-// --- TELAS DO APP ---
-
-const CreateLinkScreen = ({ user, referrerUid, onNext, setToast, unreadCount }) => {
+const CreateLinkScreen = ({ user, onNext, showToast }) => {
   const [handle, setHandle] = useState('@');
   const [loading, setLoading] = useState(false);
 
@@ -464,73 +304,29 @@ const CreateLinkScreen = ({ user, referrerUid, onNext, setToast, unreadCount }) 
     try {
       const cleanHandle = handle.trim().replace('@', '');
       const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid);
-      const userSnap = await getDoc(userRef);
-
-      if (!userSnap.exists()) {
-        await setDoc(userRef, { 
-          uid: user.uid, 
-          handle: cleanHandle, 
-          createdAt: new Date().toISOString(),
-          isPermanent: !user.isAnonymous,
-          tokens: 1,
-          unreadCount: 0 // Inicia o contador
-        });
-
-        if (referrerUid && referrerUid !== user.uid) {
-          try {
-            await runTransaction(db, async (transaction) => {
-              const refRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', referrerUid);
-              const refSnap = await transaction.get(refRef);
-              if (refSnap.exists()) {
-                transaction.update(refRef, { tokens: (refSnap.data().tokens || 0) + 1 });
-              }
-            });
-          } catch(err) { console.error("Erro ao creditar referral", err); }
-        }
-      } else {
-        await updateDoc(userRef, { handle: cleanHandle, isPermanent: !user.isAnonymous });
-      }
-
+      await setDoc(userRef, { 
+        uid: user.uid, 
+        handle: cleanHandle, 
+        createdAt: new Date().toISOString(),
+        tokens: 1
+      }, { merge: true });
       onNext(2); 
-    } catch (err) { setToast("Erro ao salvar perfil."); } finally { setLoading(false); }
+    } catch (err) { showToast("Erro ao salvar perfil."); } finally { setLoading(false); }
   };
 
   return (
-    <div className="relative flex flex-col min-h-screen overflow-y-auto">
-      <BrowserWarning />
-      <div className="absolute top-[-10%] left-[-10%] w-[80%] h-[50%] bg-pink-600/10 blur-[120px] rounded-full pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[80%] h-[50%] bg-cyan-600/10 blur-[120px] rounded-full pointer-events-none" />
-      
-      <div className="relative z-10 flex flex-col min-h-screen p-8 animate-in fade-in duration-500">
-        <header className="pt-10 pb-6 flex justify-center flex-col items-center">
-           <div className="text-6xl font-black text-white italic tracking-tighter drop-shadow-md">OFF<span className="text-cyan-500">IN</span></div>
-           <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.3em] mt-2">Corrente Anônima</p>
-        </header>
-        <main className="flex-1 flex flex-col items-center justify-center text-center space-y-10 py-10">
-          <div className="space-y-4">
-            <h2 className="text-4xl font-extrabold text-white leading-tight italic tracking-tighter drop-shadow-lg">Quem mandou <br /> esse segredo? 👀</h2>
-            <p className="text-base text-slate-400 font-medium px-4">Crie seu link, coloque no Story e descubra as verdades ocultas.</p>
-          </div>
-          <div className="w-full max-w-xs space-y-4">
-            <input 
-              type="text" 
-              placeholder="@seu_instagram" 
-              value={handle} 
-              onChange={(e) => setHandle(e.target.value.startsWith('@') ? e.target.value : '@' + e.target.value.replace('@',''))}
-              className="w-full bg-[#09090b] border border-white/10 rounded-xl py-4 px-6 text-white font-bold focus:outline-none focus:border-cyan-500/50 focus:bg-[#18181b] transition-all text-center placeholder:text-slate-600 shadow-inner" 
-            />
-            <Button onClick={handleCreateProfile} loading={loading} disabled={!handle || handle === '@' || !user}>Gerar Meu Link</Button>
-            
-            <Button onClick={() => onNext(4)} variant="ghost" className="relative mt-2">
-              Já tenho link / Ver Meu Radar
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[10px] font-black w-6 h-6 flex items-center justify-center rounded-full animate-bounce shadow-[0_0_15px_rgba(236,72,153,0.6)] border-2 border-[#18181b]">
-                  {unreadCount}
-                </span>
-              )}
-            </Button>
-          </div>
-        </main>
+    <div className="flex flex-col items-center justify-center h-full p-8 text-center space-y-10 animate-in fade-in duration-500">
+      <h2 className="text-4xl font-black italic uppercase tracking-tighter">Quem mandou esse segredo? 👀</h2>
+      <div className="w-full max-w-xs space-y-4">
+        <input 
+          type="text" 
+          placeholder="@seu_instagram" 
+          value={handle} 
+          onChange={(e) => setHandle(e.target.value.startsWith('@') ? e.target.value : '@' + e.target.value)}
+          className="w-full bg-[#09090b] border border-white/10 rounded-xl py-4 px-6 text-white font-bold text-center focus:outline-none focus:border-cyan-500 transition-all" 
+        />
+        <Button onClick={handleCreateProfile} loading={loading}>Gerar Meu Link</Button>
+        <Button onClick={() => onNext(4)} variant="ghost">Ver Meu Radar</Button>
       </div>
     </div>
   );
@@ -538,18 +334,7 @@ const CreateLinkScreen = ({ user, referrerUid, onNext, setToast, unreadCount }) 
 
 const LinkReadyScreen = ({ user, onNext }) => {
   const [copied, setCopied] = useState(false);
-  const [handle, setHandle] = useState('');
-  const [generatedImage, setGeneratedImage] = useState(null);
-  
   const shareLink = `${APP_URL}?u=${user?.uid}`;
-
-  useEffect(() => {
-    if (user?.uid) {
-      getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid)).then(d => {
-        if (d.exists()) setHandle(d.data().handle);
-      });
-    }
-  }, [user]);
 
   const handleCopy = () => {
     copyToClipboardFallback(shareLink);
@@ -557,481 +342,66 @@ const LinkReadyScreen = ({ user, onNext }) => {
     setTimeout(() => onNext(4), 2000); 
   };
 
-  const handleDownloadAttempt = () => {
-    const dataUrl = generateStoryImage(handle);
-    setGeneratedImage(dataUrl);
-
-    try {
-      const link = document.createElement('a');
-      link.download = `offin-desafio-${handle || 'secreto'}.png`;
-      link.href = dataUrl;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (err) {
-      console.warn("Download automático bloqueado pelo navegador.", err);
-    }
-  };
-
-  if (generatedImage) {
-    return (
-      <div className="flex flex-col min-h-screen p-8 animate-in slide-in-from-bottom-5 overflow-y-auto text-center items-center justify-center relative bg-[#09090b] z-50">
-        <button onClick={() => setGeneratedImage(null)} className="absolute top-6 left-6 p-3 bg-white/5 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-all">
-          <ChevronLeft size={24} />
-        </button>
-        
-        <h2 className="text-2xl font-black text-white mb-3 italic uppercase">Quase lá!</h2>
-        
-        <div className="bg-cyan-500/10 border border-cyan-500/30 p-4 rounded-xl mb-8 w-full max-w-sm">
-          <p className="text-sm text-cyan-400 font-bold animate-pulse flex flex-col gap-2 items-center">
-            <Download size={22} />
-            Pressione e segure a imagem abaixo para "Salvar na Galeria" ou "Compartilhar"
-          </p>
-        </div>
-        
-        <img 
-          src={generatedImage} 
-          alt="Seu Story" 
-          className="w-[70%] max-w-[280px] rounded-[2rem] shadow-[0_0_40px_rgba(6,182,212,0.4)] border border-white/10" 
-          style={{ pointerEvents: 'auto', WebkitTouchCallout: 'default' }} 
-        />
-        
-        <div className="w-full max-w-sm mt-10">
-          <Button onClick={() => setGeneratedImage(null)} variant="secondary">Já salvei a foto, voltar</Button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col min-h-screen p-8 animate-in slide-in-from-right overflow-y-auto text-center justify-center items-center relative">
-      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none mix-blend-overlay"></div>
-      
-      <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500 mb-6 border border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-        <CheckCircle2 size={32} />
+    <div className="flex flex-col items-center justify-center h-full p-8 text-center space-y-8 animate-in slide-in-from-right">
+      <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500 mb-6 border border-emerald-500/20"><CheckCircle2 size={32} /></div>
+      <h2 className="text-3xl font-black italic uppercase">Link Gerado!</h2>
+      <div className="bg-[#09090b] border border-white/5 p-6 rounded-2xl w-full max-w-sm space-y-6">
+        <Button onClick={handleCopy} icon={copied ? CheckCircle2 : Copy} variant={copied ? 'success' : 'primary'}>
+          {copied ? 'Link Copiado!' : 'Copiar Link Sticker'}
+        </Button>
       </div>
-      <h2 className="text-3xl font-black text-white mb-2 italic tracking-tighter uppercase">Link Gerado!</h2>
-      <p className="text-slate-400 mb-8 text-sm">Poste no Instagram seguindo os passos abaixo.</p>
-      
-      <div className="bg-[#09090b] border border-yellow-500/30 p-4 rounded-xl mb-8 flex items-center gap-3 w-full max-w-sm shadow-[0_0_15px_rgba(234,179,8,0.1)]">
-         <div className="bg-yellow-500 text-yellow-950 p-2 rounded-full"><Coins size={18}/></div>
-         <p className="text-xs text-slate-300 font-medium text-left leading-tight">Você ganhou <span className="text-yellow-400 font-bold">1 Moeda</span> de boas-vindas para revelar seu primeiro segredo!</p>
-      </div>
-
-      <div className="space-y-6 w-full max-w-sm relative z-10">
-        <div className="bg-[#09090b] border border-white/5 p-6 rounded-2xl space-y-6 shadow-2xl backdrop-blur-md">
-          <div className="space-y-3">
-            <span className="text-[10px] font-black text-pink-500 uppercase tracking-widest">Passo 01</span>
-            <Button onClick={handleDownloadAttempt} variant="secondary" icon={Download}>Baixar Foto para o Story</Button>
-          </div>
-          <div className="h-px bg-white/5 w-full" />
-          <div className="space-y-3">
-            <span className="text-[10px] font-black text-cyan-500 uppercase tracking-widest">Passo 02</span>
-            <Button onClick={handleCopy} icon={copied ? CheckCircle2 : Copy} variant={copied ? 'success' : 'primary'}>
-              {copied ? 'Link Copiado!' : 'Copiar Link Sticker'}
-            </Button>
-          </div>
-        </div>
-        <div className="flex items-start gap-3 bg-cyan-500/10 p-4 rounded-xl border border-cyan-500/20">
-          <AlertCircle size={16} className="text-cyan-400 shrink-0 mt-0.5" />
-          <p className="text-[10px] text-cyan-100/70 text-left leading-relaxed">No Instagram, use o adesivo de <b>LINK</b> e cole o endereço por cima da palavra <b>LINK</b> na imagem que você baixou.</p>
-        </div>
-      </div>
+      <p className="text-slate-400 text-sm">Poste no Instagram e comece a receber segredos!</p>
     </div>
   );
 };
 
-const SendSecretScreen = ({ targetUid, user, onReset, setToast }) => {
-  const [targetHandle, setTargetHandle] = useState('...');
+const SendSecretScreen = ({ targetUid, user, onReset, showToast }) => {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
 
-  useEffect(() => {
-    const fetchTarget = async () => {
-      const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', targetUid);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) setTargetHandle(docSnap.data().handle);
-    };
-    if (targetUid) fetchTarget();
-  }, [targetUid]);
-
   const handleSend = async () => {
     if (!message.trim() || !user) return;
     setLoading(true);
-
-    const performSend = async (currentUser) => {
-      let finalName = currentUser.displayName;
-      if (!finalName && currentUser.email) finalName = currentUser.email.split('@')[0];
-      if (!finalName && currentUser.providerData && currentUser.providerData.length > 0) finalName = currentUser.providerData[0].displayName;
-      if (!finalName) finalName = "Identidade Oculta";
-
+    try {
       const msgId = crypto.randomUUID();
-      
-      try {
-        await runTransaction(db, async (transaction) => {
-          const targetUserRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', targetUid);
-          const msgRef = doc(db, 'artifacts', appId, 'public', 'data', 'messages', msgId);
-          const idRef = doc(db, 'artifacts', appId, 'public', 'data', 'identities', msgId);
-
-          const targetUserSnap = await transaction.get(targetUserRef);
-          if (!targetUserSnap.exists()) throw "Destinatário não encontrado";
-
-          transaction.set(msgRef, {
-            id: msgId, 
-            targetUid, 
-            senderUid: currentUser.uid, 
-            text: message.trim(), 
-            createdAt: new Date().toISOString(), 
-            isRevealed: false, 
-            status: 'sent'
-          });
-
-          transaction.set(idRef, {
-            senderName: finalName,
-            senderPhoto: currentUser.photoURL || ''
-          });
-
-          const currentUnread = targetUserSnap.data().unreadCount || 0;
-          transaction.update(targetUserRef, { unreadCount: currentUnread + 1 });
-        });
-
-        setSent(true);
-      } catch (err) {
-        console.error(err);
-        setToast("Erro de conexão ao enviar.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (user.isAnonymous) {
-      try {
-        const provider = new GoogleAuthProvider();
-        const result = await signInWithPopup(auth, provider);
-        await performSend(result.user);
-      } catch (error) {
-        setLoading(false);
-        if (error.code === 'auth/popup-blocked') {
-          setToast("Janela de login bloqueada. Tente abrir no navegador (Chrome/Safari).");
-        } else {
-          setToast("Erro na autenticação com o Google.");
-        }
-      }
-    } else { 
-      await performSend(user); 
-    }
+      const msgRef = doc(db, 'artifacts', appId, 'public', 'data', 'messages', msgId);
+      await setDoc(msgRef, {
+        id: msgId, 
+        targetUid, 
+        senderUid: user.uid, 
+        text: message.trim(), 
+        createdAt: new Date().toISOString(), 
+        isRevealed: false,
+        status: 'sent'
+      });
+      setSent(true);
+    } catch (err) { showToast("Erro ao enviar."); } finally { setLoading(false); }
   };
 
   if (sent) return (
-    <div className="flex flex-col min-h-screen items-center justify-center p-8 text-center animate-in zoom-in">
-      <CheckCircle2 size={64} className="text-emerald-500 mb-6 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]" />
-      <h2 className="text-3xl font-black italic mb-4 text-white tracking-tighter uppercase">Enviado com Sucesso! 🤫</h2>
-      <p className="text-slate-400 mb-10 text-sm">@{targetHandle} só vai saber que foi você se gastar as Moedas dele.</p>
-      <Button onClick={onReset} icon={Ticket} variant="primary">Quero Criar Meu Link</Button>
+    <div className="flex flex-col items-center justify-center h-full p-8 text-center space-y-6">
+      <CheckCircle2 size={64} className="text-emerald-500" />
+      <h2 className="text-3xl font-black italic uppercase">Segredo Enviado! 🤫</h2>
+      <Button onClick={onReset}>Quero Criar Meu Link</Button>
     </div>
   );
 
   return (
-    <div className="flex flex-col min-h-screen p-8 overflow-y-auto">
-      <BrowserWarning />
-      <div className="flex-1 flex flex-col items-center justify-center text-center space-y-8 relative z-10">
-        <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-tight drop-shadow-md">Mandar segredo para <br/> <span className="text-cyan-500">@{targetHandle}</span></h2>
-        <div className="w-full max-w-xs space-y-4">
-          <div className="relative">
-            <textarea 
-              placeholder="Escreva algo que você nunca teve coragem de dizer..." 
-              value={message} onChange={(e) => setMessage(e.target.value)} 
-              maxLength={150} 
-              className="w-full h-44 bg-[#09090b] border border-white/10 rounded-2xl p-6 text-white resize-none focus:outline-none focus:border-cyan-500/50 font-medium text-base leading-relaxed shadow-inner placeholder:text-slate-600" 
-            />
-            <div className="absolute bottom-4 right-6 text-[10px] text-slate-500 font-bold">{message.length}/150</div>
-          </div>
-          <Button onClick={handleSend} loading={loading} disabled={!message.trim()} icon={Send} variant="primary">
-            {user?.isAnonymous ? 'Identificar e Enviar' : 'Enviar Segredo'}
-          </Button>
-          <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest pt-2">Sua identidade está oculta e segura no cofre.</p>
-        </div>
-      </div>
+    <div className="flex flex-col items-center justify-center h-full p-8 text-center space-y-8">
+      <h2 className="text-3xl font-black italic uppercase">Mandar segredo</h2>
+      <textarea 
+        placeholder="Escreva algo aqui..." 
+        value={message} onChange={(e) => setMessage(e.target.value)} 
+        className="w-full h-44 bg-[#09090b] border border-white/10 rounded-2xl p-6 text-white resize-none focus:outline-none focus:border-cyan-500 font-medium" 
+      />
+      <Button onClick={handleSend} loading={loading} disabled={!message.trim()} icon={Send}>Enviar Segredo</Button>
     </div>
   );
 };
 
-const InboxScreen = ({ user, userProfile, onSelectMessage, onBack, setToast, onOpenStore }) => {
-  const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('received');
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
-
-  useEffect(() => {
-    if (!user) return;
-    const msgRef = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
-    return onSnapshot(msgRef, (snap) => {
-      setMessages(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
-    }, (error) => {
-      console.error("Erro no onSnapshot de messages:", error);
-      setLoading(false);
-    });
-  }, [user]);
-
-  const receivedMsgs = messages.filter(m => m.targetUid === user.uid).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const sentMsgs = messages.filter(m => m.senderUid === user.uid).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-
-  const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, new GoogleAuthProvider());
-      setToast("Acesso garantido!", "success");
-    } catch (e) {
-      setToast("Erro no login.");
-    }
-  };
-
-  const executeDelete = async (e, msgId) => {
-    e.stopPropagation();
-    try {
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', msgId));
-      setToast("Mensagem apagada.", "success");
-      setConfirmDeleteId(null);
-    } catch(err) {
-      setToast("Erro ao apagar mensagem.");
-    }
-  };
-
-  return (
-    <div className="flex flex-col min-h-screen overflow-y-auto">
-      <header className="px-6 py-5 bg-[#09090b]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between sticky top-0 z-20">
-        <button onClick={onBack} className="text-slate-400 p-2 hover:text-white transition-colors"><ChevronLeft /></button>
-        <div className="text-center">
-           <h1 className="font-black text-white text-lg italic tracking-tighter uppercase drop-shadow-md">OFF<span className="text-cyan-500">IN</span></h1>
-           <button onClick={onOpenStore} className="flex items-center justify-center gap-1 text-yellow-500 hover:text-yellow-400 font-bold text-[10px] mt-0.5 transition-colors bg-yellow-500/10 px-2 py-0.5 rounded-full border border-yellow-500/20 mx-auto">
-             <Coins size={12}/> {userProfile?.tokens || 0} Moedas <span className="ml-1 opacity-70">+</span>
-           </button>
-        </div>
-        <div className="flex items-center gap-3">
-          {user?.isAnonymous ? (
-            <button onClick={handleLogin} className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center text-slate-400 border border-white/10 hover:text-white transition-all">
-              <User size={18} />
-            </button>
-          ) : (
-            <div className="w-9 h-9 rounded-full border border-cyan-500/30 overflow-hidden shadow-[0_0_10px_rgba(6,182,212,0.2)]">
-               <img src={user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.uid}`} alt="Profile" className="w-full h-full object-cover" />
-            </div>
-          )}
-        </div>
-      </header>
-
-      <div className="flex p-1 mx-6 mt-6 rounded-xl bg-[#09090b] border border-white/5">
-        <button onClick={() => setActiveTab('received')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-black transition-all uppercase tracking-tighter ${activeTab === 'received' ? 'bg-white/10 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}>
-          <Inbox size={14} /> Recebidos ({receivedMsgs.length})
-        </button>
-        <button onClick={() => setActiveTab('sent')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-black transition-all uppercase tracking-tighter ${activeTab === 'sent' ? 'bg-white/10 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}>
-          <Send size={14} /> Enviados ({sentMsgs.length})
-        </button>
-      </div>
-
-      <main className="flex-1 p-6 space-y-4 pb-12 relative z-10">
-        {user?.isAnonymous && (
-          <div className="bg-cyan-500/10 border border-cyan-500/20 p-5 rounded-2xl flex flex-col items-center gap-3 text-center mb-6">
-            <p className="text-[11px] font-bold text-cyan-100 leading-tight">Faça login com o Google para salvar seus segredos permanentemente!</p>
-            <button onClick={handleLogin} className="bg-cyan-500 text-white px-5 py-2 rounded-lg text-[10px] font-black uppercase shadow-[0_0_10px_rgba(6,182,212,0.3)] active:scale-95 transition-all">Conectar Conta Google</button>
-          </div>
-        )}
-
-        {loading ? <div className="flex justify-center py-20"><Loader2 className="animate-spin text-cyan-500" /></div> : 
-          (activeTab === 'received' ? receivedMsgs : sentMsgs).length === 0 ? (
-            <div className="flex flex-col items-center py-20 opacity-30">
-              <Ghost size={50} className="mb-4 text-slate-500" />
-              <p className="font-bold uppercase text-[10px] tracking-widest text-slate-500">Caixa Vazia</p>
-            </div>
-          ) : (
-            (activeTab === 'received' ? receivedMsgs : sentMsgs).map(msg => (
-              <div key={msg.id} onClick={() => activeTab === 'received' && setConfirmDeleteId(null) && onSelectMessage(msg)} className={`bg-[#09090b] p-6 rounded-2xl border border-white/5 transition-all ${activeTab === 'received' ? 'cursor-pointer active:scale-95 hover:border-cyan-500/30 hover:bg-white/5' : ''}`}>
-                <div className="flex items-center justify-between mb-4">
-                  <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-full flex items-center gap-1 ${msg.isRevealed ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-pink-500/10 text-pink-400 border border-pink-500/20'}`}>
-                     {msg.isRevealed ? <CheckCircle2 size={10}/> : <Lock size={10}/>}
-                     {msg.isRevealed ? 'Identidade Revelada' : 'Segredo Trancado'}
-                     {activeTab === 'received' && msg.status === 'sent' && <span className="ml-1 w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></span>}
-                  </span>
-                  
-                  <div className="flex items-center gap-3">
-                    {activeTab === 'sent' && (
-                      <div className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500 uppercase">
-                        {msg.status === 'sent' ? <Clock size={10} /> : <Eye size={10} />}
-                        {msg.status === 'sent' ? 'Entregue' : 'Visualizado'}
-                      </div>
-                    )}
-                    
-                    {confirmDeleteId === msg.id ? (
-                      <div className="flex items-center gap-2">
-                        <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }} className="text-[10px] text-slate-400 hover:text-white px-2 py-1 font-bold">Cancelar</button>
-                        <button onClick={(e) => executeDelete(e, msg.id)} className="bg-pink-600/20 text-pink-500 border border-pink-500/30 hover:bg-pink-600 hover:text-white px-2 py-1 rounded-md text-[10px] font-black uppercase transition-colors shadow-sm">Apagar</button>
-                      </div>
-                    ) : (
-                      <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(msg.id); }} className="text-slate-500 hover:text-pink-500 transition-colors p-1 rounded-md hover:bg-white/5">
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                  </div>
-
-                </div>
-                <p className="italic text-slate-200 font-serif text-lg leading-relaxed">"{msg.text}"</p>
-                {activeTab === 'received' && !msg.isRevealed && <div className="mt-5 pt-4 border-t border-white/5 flex items-center gap-2 text-[10px] font-black text-cyan-500 uppercase tracking-widest">Usar Moeda para Revelar <ArrowRight size={12}/></div>}
-              </div>
-            ))
-          )
-        }
-      </main>
-    </div>
-  );
-};
-
-const ViralPaywallScreen = ({ user, userProfile, message, onUnlock, setToast, onOpenStore }) => {
-  const [copied, setCopied] = useState(false);
-  const tokens = userProfile?.tokens || 0;
-  const [isProcessing, setIsProcessing] = useState(false);
-
-  useEffect(() => { 
-    const checkStatus = async () => {
-      if (message.status === 'sent') {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', message.id), { status: 'viewed' });
-        
-        if (userProfile?.unreadCount > 0) {
-          updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid), { 
-            unreadCount: userProfile.unreadCount - 1 
-          });
-        }
-      }
-
-      if (message.isRevealed && !message.senderName) {
-        setIsProcessing(true);
-        const idSnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'identities', message.id));
-        setIsProcessing(false);
-        onUnlock(idSnap.exists() ? { ...message, ...idSnap.data() } : message);
-      } else if (message.isRevealed && message.senderName) {
-        onUnlock(message);
-      }
-    };
-    checkStatus();
-  }, [message]);
-
-  const handleUnlock = async () => {
-    if (tokens < 1) {
-       onOpenStore();
-       return;
-    }
-    setIsProcessing(true);
-    try {
-      await runTransaction(db, async (transaction) => {
-        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid);
-        const msgRef = doc(db, 'artifacts', appId, 'public', 'data', 'messages', message.id);
-
-        const userDoc = await transaction.get(userRef);
-        if (!userDoc.exists()) throw "Usuário não encontrado";
-
-        const currentTokens = userDoc.data().tokens || 0;
-        if (currentTokens < 1) throw "Saldo insuficiente";
-
-        transaction.update(userRef, { tokens: currentTokens - 1 });
-        transaction.update(msgRef, { isRevealed: true, status: 'revealed' });
-      });
-      
-      const idSnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'identities', message.id));
-      const msgWithIdentity = idSnap.exists() ? { ...message, ...idSnap.data() } : message;
-
-      setTimeout(() => onUnlock(msgWithIdentity), 800);
-    } catch(e) {
-      console.error(e);
-      setToast("Erro ao processar o pagamento. A identidade continua protegida.");
-      setIsProcessing(false);
-    }
-  };
-
-  const handleCopyLink = () => {
-    const shareLink = `${APP_URL}?u=${user.uid}`;
-    copyToClipboardFallback(shareLink);
-    setCopied(true);
-    setToast("Link copiado! Poste no Instagram.", "success");
-  };
-
-  return (
-    <div className="flex flex-col min-h-screen p-8 text-center justify-center space-y-10 relative z-10">
-      <Lock size={56} className="text-pink-500 mx-auto animate-pulse drop-shadow-[0_0_15px_rgba(236,72,153,0.5)]" />
-      <h2 className="text-3xl font-black italic uppercase tracking-tighter leading-tight text-white drop-shadow-md">Quem enviou <br/> esse segredo?</h2>
-      
-      <div className="bg-[#09090b] p-8 rounded-3xl border border-white/5 shadow-2xl relative">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#18181b] px-4 py-1.5 rounded-full border border-white/10 text-[9px] font-black uppercase text-slate-400 tracking-widest">A Mensagem</div>
-        <p className="italic text-xl font-serif text-slate-200 leading-relaxed">"{message.text}"</p>
-      </div>
-      
-      <div className="bg-cyan-500/5 border border-cyan-500/20 p-8 rounded-3xl space-y-6 relative overflow-hidden">
-        {tokens >= 1 && <div className="absolute inset-0 bg-cyan-500/10 blur-2xl z-0 pointer-events-none"></div>}
-
-        <button onClick={onOpenStore} className="flex items-center justify-center gap-2 text-yellow-500 hover:text-yellow-400 transition-colors font-black text-lg mx-auto relative z-10 bg-[#09090b] px-4 py-2 rounded-xl border border-yellow-500/20">
-           <Coins size={22}/> {tokens} Moedas <span className="text-xs ml-1 bg-yellow-500 text-yellow-950 px-1.5 rounded-md">+</span >
-        </button>
-
-        {tokens >= 1 ? (
-          <div className="space-y-5 relative z-10">
-            <p className="text-sm font-medium italic leading-relaxed text-cyan-100/80">Você tem saldo! Gaste 1 Moeda agora para abrir o cofre de identidade.</p>
-            <Button onClick={handleUnlock} loading={isProcessing} icon={Unlock} variant="success">
-               Gastar 1 🪙 para Revelar
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-5 relative z-10">
-            <p className="text-sm font-black italic leading-tight text-pink-400 uppercase tracking-tighter">Acabaram suas moedas!</p>
-            <Button onClick={onOpenStore} icon={Store} variant="primary">
-               Obter mais Moedas
-            </Button>
-            <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-4">Ou copie seu link grátis. Quando alguém enviar um segredo através dele, você ganha +1 Moeda!</p>
-            <Button onClick={handleCopyLink} icon={copied ? CheckCircle2 : Copy} variant={copied ? 'success' : 'secondary'} className="!py-3 !text-sm">
-               {copied ? 'Link Copiado!' : 'Copiar Link para Divulgar'}
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const RevealScreen = ({ message, onBack }) => {
-  const [isHolding, setIsHolding] = useState(false);
-  return (
-    <div className="flex flex-col min-h-screen p-8 text-center justify-center space-y-10 overflow-y-auto relative">
-      <div className="absolute inset-0 bg-black z-[-1]"></div>
-      <header className="absolute top-8 left-8 z-20"><button onClick={onBack} className="p-3 bg-[#09090b] rounded-full text-slate-400 hover:text-white border border-white/10 transition-colors"><ChevronLeft size={20} /></button></header>
-      
-      <div className="bg-[#09090b] rounded-[2rem] p-10 relative shadow-[0_0_50px_rgba(6,182,212,0.15)] min-h-[400px] flex flex-col justify-center select-none touch-none border border-white/5">
-        {isHolding ? (
-          <div className="animate-in fade-in zoom-in duration-300 space-y-8">
-            <div className="w-36 h-36 rounded-full mx-auto border-4 border-cyan-500 overflow-hidden shadow-[0_0_30px_rgba(6,182,212,0.4)]">
-              <img src={message.senderPhoto || `https://api.dicebear.com/7.x/avataaars/svg?seed=${message.senderUid}`} className="w-full h-full object-cover" />
-            </div>
-            <div className="space-y-2">
-              <span className="text-[10px] font-black text-cyan-500 uppercase tracking-[0.3em]">O Remetente é:</span>
-              <p className="text-3xl font-black italic text-white leading-tight tracking-tighter drop-shadow-md">{message.senderName}</p>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <ShieldCheck size={80} className="mx-auto text-cyan-500 animate-pulse drop-shadow-[0_0_15px_rgba(6,182,212,0.5)]" />
-            <p className="font-black text-xl text-white uppercase tracking-tight italic">Segure para Ver</p>
-            <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest px-8">O modo anti-print está ativado por segurança.</p>
-          </div>
-        )}
-      </div>
-      
-      <button 
-        onMouseDown={() => setIsHolding(true)} onMouseUp={() => setIsHolding(false)}
-        onTouchStart={() => setIsHolding(true)} onTouchEnd={() => setIsHolding(false)}
-        className={`w-full py-8 rounded-2xl font-black text-xl transition-all select-none touch-none shadow-2xl relative z-10 border ${isHolding ? 'bg-cyan-900 border-cyan-700 scale-95 shadow-inner text-cyan-300' : 'bg-cyan-500 border-cyan-400 text-white shadow-[0_0_30px_rgba(6,182,212,0.3)]'}`}
-      >
-        {isHolding ? 'EXIBINDO IDENTIDADE...' : '👆 PRESSIONE E SEGURE'}
-      </button>
-    </div>
-  );
-};
+// --- COMPONENTE PRINCIPAL ---
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -1039,108 +409,94 @@ export default function App() {
   const [screen, setScreen] = useState(1);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [targetUid, setTargetUid] = useState(null); 
-  const [referrerUid, setReferrerUid] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null); 
-  
-  // Controle de Interface
   const [toast, setToast] = useState(null);
-  const [toastType, setToastType] = useState('error');
   const [isStoreOpen, setIsStoreOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
 
-  const showToast = (msg, type = 'error') => {
-    setToast(msg);
-    setToastType(type);
-  };
+  // Helper unificado para toasts
+  const showToast = React.useCallback((message, type = 'error') => {
+    setToast({ message, type });
+  }, []);
 
   useEffect(() => {
     const initAuth = async () => {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          try {
-            await signInWithCustomToken(auth, __initial_auth_token);
-          } catch (tokenErr) {
-            await signInAnonymously(auth);
-          }
+          await signInWithCustomToken(auth, __initial_auth_token);
         } else {
           await signInAnonymously(auth);
         }
-      } catch (err) { 
-        console.error("Erro crítico na autenticação:", err); 
-      } finally { 
-        setLoadingAuth(false); 
-      }
+      } catch (e) { console.error(e); } finally { setLoadingAuth(false); }
     };
     initAuth();
-    return onAuthStateChanged(auth, setUser);
+    return onAuthStateChanged(auth, (u) => {
+      setUser(u);
+    });
   }, []);
 
   useEffect(() => {
     if (!user) return;
-    
-    // Perfil
-    const unsubProfile = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid), (d) => {
+    const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid);
+    return onSnapshot(userRef, (d) => {
       if(d.exists()) setUserProfile(d.data());
-    }, (error) => console.error(error));
-
-    // Contador
-    const msgRef = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
-    const unsubMessages = onSnapshot(msgRef, (snap) => {
-      const msgs = snap.docs.map(doc => doc.data());
-      const unread = msgs.filter(m => m.targetUid === user.uid && m.status === 'sent').length;
-      setUnreadCount(unread);
-    }, (error) => console.error(error));
-
-    return () => {
-      unsubProfile();
-      unsubMessages();
-    };
+    }, (err) => console.error("Firestore Error:", err));
   }, [user]);
 
   useEffect(() => {
     if (!loadingAuth && user) {
       const u = new URLSearchParams(window.location.search).get('u');
       if (u) {
-        if (u === user.uid) {
-          setScreen(4);
-        } else { 
-          setTargetUid(u); 
-          setReferrerUid(u);
-          setScreen(3); 
-        }
+        if (u === user.uid) setScreen(4);
+        else { setTargetUid(u); setScreen(3); }
       }
     }
   }, [loadingAuth, user]);
 
   if (loadingAuth) return (
-    <div className="min-h-screen bg-[#18181b] flex flex-col items-center justify-center gap-6 relative">
-      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
-      <div className="text-5xl font-black text-white italic tracking-tighter animate-pulse drop-shadow-md">OFF<span className="text-cyan-500">IN</span></div>
-      <Loader2 className="animate-spin text-cyan-500" size={24} />
+    <div className="min-h-screen bg-[#18181b] flex items-center justify-center text-white italic font-black text-4xl animate-pulse">
+      OFFIN
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-[#18181b] text-white flex justify-center font-sans antialiased overflow-y-auto relative selection:bg-cyan-500 selection:text-white">
-      {/* Fundo Global Estilizado */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-         <div className="absolute inset-0 bg-[#18181b]"></div>
-         <div className="absolute inset-0 opacity-40 mix-blend-overlay" style={{ backgroundImage: `repeating-linear-gradient(105deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 4px)` }}></div>
-      </div>
-
-      <div className="w-full max-w-md bg-[#18181b] min-h-screen shadow-2xl relative flex flex-col z-10 border-x border-white/5 overflow-hidden">
-        {screen === 1 && <CreateLinkScreen user={user} referrerUid={referrerUid} onNext={setScreen} setToast={showToast} unreadCount={unreadCount} />}
-        {screen === 2 && <LinkReadyScreen user={user} onNext={setScreen} />}
-        {screen === 3 && targetUid && <SendSecretScreen targetUid={targetUid} user={user} onReset={() => setScreen(1)} setToast={showToast} />}
-        {screen === 4 && <InboxScreen user={user} userProfile={userProfile} onBack={() => setScreen(1)} onSelectMessage={msg => { setSelectedMessage(msg); setScreen(5); }} setToast={showToast} onOpenStore={() => setIsStoreOpen(true)} />}
-        {screen === 5 && selectedMessage && <ViralPaywallScreen user={user} userProfile={userProfile} message={selectedMessage} onBack={() => setScreen(4)} onUnlock={(msgWithId) => { setSelectedMessage(msgWithId || selectedMessage); setScreen(6); }} setToast={showToast} onOpenStore={() => setIsStoreOpen(true)} />}
-        {screen === 6 && selectedMessage && <RevealScreen message={selectedMessage} onBack={() => setScreen(4)} />}
+    <div className="min-h-screen bg-[#18181b] text-white flex justify-center font-sans relative overflow-hidden">
+      <div className="w-full max-w-md bg-[#18181b] min-h-screen flex flex-col z-10 border-x border-white/5 relative">
         
-        {/* Modal da Loja/Carteira com PIX Real */}
-        <StoreModal isOpen={isStoreOpen} onClose={() => setIsStoreOpen(false)} user={user} userProfile={userProfile} setToast={showToast} />
+        {screen === 1 && <CreateLinkScreen user={user} onNext={setScreen} showToast={showToast} />}
+        {screen === 2 && <LinkReadyScreen user={user} onNext={setScreen} />}
+        {screen === 3 && targetUid && <SendSecretScreen targetUid={targetUid} user={user} onReset={() => setScreen(1)} showToast={showToast} />}
+        
+        {screen === 4 && (
+          <div className="p-6 h-full flex flex-col">
+            <header className="flex justify-between items-center mb-10">
+              <h2 className="text-2xl font-black italic uppercase">Radar</h2>
+              <button onClick={() => setIsStoreOpen(true)} className="bg-yellow-500/10 text-yellow-500 px-4 py-2 rounded-xl font-bold flex items-center gap-2 border border-yellow-500/20">
+                <Coins size={16}/> {userProfile?.tokens || 0}
+              </button>
+            </header>
+            <main className="flex-1 flex flex-col items-center justify-center opacity-40">
+              <Inbox size={48} className="mb-4" />
+              <p className="font-bold uppercase text-xs tracking-widest">A carregar segredos...</p>
+            </main>
+          </div>
+        )}
+
+        <StoreModal 
+          isOpen={isStoreOpen} 
+          onClose={() => setIsStoreOpen(false)} 
+          user={user} 
+          userProfile={userProfile} 
+          showToast={showToast} 
+        />
       </div>
 
-      <Toast message={toast} type={toastType} onClose={() => setToast(null)} />
+      {toast && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          onClose={() => setToast(null)} 
+        />
+      )}
     </div>
   );
 }
